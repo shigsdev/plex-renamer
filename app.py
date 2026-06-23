@@ -25,8 +25,8 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 import apply as apply_mod
 import dedupe
 import metadata
+import quarantine
 import scanner
-import trash
 
 app = Flask(__name__)
 
@@ -39,7 +39,7 @@ def index():
 
 @app.get("/dedupe")
 def dedupe_page():
-    return render_template("dedupe.html", trash_ok=trash.available())
+    return render_template("dedupe.html", quarantine=quarantine.quarantine_stats())
 
 
 def _parse_dirs(raw: str) -> list[str]:
@@ -143,20 +143,40 @@ def api_dedupe_scan():
         "copies": sum(len(g["copies"]) for g in rows),
         "reclaimable_bytes": sum(g["reclaimable_bytes"] for g in rows),
     }
-    return jsonify(groups=rows, summary=summary, trash_ok=trash.available())
+    return jsonify(groups=rows, summary=summary, quarantine=quarantine.quarantine_stats())
 
 
 @app.post("/api/dedupe/remove")
 def api_dedupe_remove():
-    """Stream Recycle-Bin removal progress, then a final summary."""
+    """Stream quarantine-move progress (reversible), then a final summary."""
     items = request.get_json(force=True).get("items", [])
 
     @stream_with_context
     def generate():
-        for event in trash.trash_stream(items):
+        for event in quarantine.quarantine_stream(items):
             yield json.dumps(event) + "\n"
 
     return Response(generate(), mimetype="application/x-ndjson")
+
+
+@app.post("/api/dedupe/undo")
+def api_dedupe_undo():
+    """Restore the most recent quarantine batch (in-app undo)."""
+    results, log = quarantine.undo_last()
+    if not log:
+        return jsonify(error="Nothing to undo."), 400
+    return jsonify(restored=sum(1 for r in results if r.ok),
+                   failed=sum(1 for r in results if not r.ok),
+                   log=os.path.basename(log),
+                   quarantine=quarantine.quarantine_stats())
+
+
+@app.post("/api/dedupe/empty")
+def api_dedupe_empty():
+    """Permanently delete everything in quarantine (frees space, irreversible)."""
+    result = quarantine.empty_quarantine()
+    result["quarantine"] = quarantine.quarantine_stats()
+    return jsonify(result)
 
 
 if __name__ == "__main__":

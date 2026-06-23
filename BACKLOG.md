@@ -22,12 +22,15 @@
 
 ### Cross-drive duplicate cleanup  *(requested + built 2026-06-23)*
 
-**SHIPPED:** finder (`dedupe.py`) + Recycle-Bin removal (`trash.py`) + web UI at
-**`/dedupe`** (scan → per-group keeper radio + approve checkbox → streamed
-Recycle-Bin removal + done banner). Verified in-browser on real data (P+R: 82
-duplicate episodes, 151 GB reclaimable). 19 tests across the two modules + the
-endpoints. Recovery is via the Windows Recycle Bin; each batch logged to
-`undo_logs/removed-NNNN.json`. Remaining/optional below.
+**SHIPPED:** finder (`dedupe.py`) + **reversible quarantine** removal
+(`quarantine.py`) + web UI at **`/dedupe`** (scan → per-group keeper radio +
+approve checkbox → streamed quarantine + done banner, with **in-app Undo** and
+**Empty quarantine** (permanent free-space) buttons). Verified in-browser on real
+data (P+R: 82 duplicate episodes, 151 GB reclaimable). Removal moves copies to a
+same-drive `_plex_renamer_trash` folder (instant, fully reversible) instead of
+the Recycle Bin, so undo never depends on the OS bin. Each batch logged to
+`undo_logs/removed-NNNN.json`; `empty_quarantine` permanently deletes to free
+space. ~18 tests across the modules + endpoints.
 
 **Problem.** The TV library is accidentally duplicated across physical drives.
 A scan on 2026-06-23 found **203 of 3,412 shows present on more than one drive**

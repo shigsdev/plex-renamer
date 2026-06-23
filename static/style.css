@@ -32,6 +32,10 @@ button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
 button.ghost { color: var(--muted); }
 button.mini { padding: 2px 7px; font-size: 12px; }
+button.danger { border-color: var(--guess); color: #f0b0b0; }
+button.danger:hover { background: var(--guess); color: #fff; }
+button:disabled { opacity: 0.45; cursor: default; }
+.quarbar { border-top: 1px dashed var(--line); font-size: 13px; }
 .spacer { flex: 1; }
 .status { color: var(--muted); }
 .status.busy::after { content: " ⏳"; }

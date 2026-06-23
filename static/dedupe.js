@@ -1,7 +1,7 @@
 /* Duplicate Cleanup — front-end. Vanilla JS, safe DOM building (no innerHTML).
    Each group: pick the keeper (radio, pre-set to the suggestion) and opt the
    group in for removal (checkbox). Nothing is removed without per-group approval.
-   "Move to Recycle Bin" streams progress like the renamer's apply. */
+   Removal quarantines copies (reversible); streams progress like apply. */
 
 let GROUPS = [];
 
@@ -92,7 +92,6 @@ function buildGroup(g) {
     (() => {
       const cb = h("input", { type: "checkbox" });
       cb.checked = g._approved;
-      cb.disabled = !window.TRASH_OK;
       cb.addEventListener("change", () => { g._approved = cb.checked; box.classList.toggle("approved", cb.checked); updateApproved(); });
       return cb;
     })(),
@@ -126,7 +125,7 @@ document.querySelectorAll("[data-bulk]").forEach((btn) => {
     const mode = btn.dataset.bulk;
     for (const g of GROUPS) {
       if (mode === "clear") g._approved = false;
-      else if (mode === "suggested") { g._keep = g.suggested_keep; g._approved = window.TRASH_OK; }
+      else if (mode === "suggested") { g._keep = g.suggested_keep; g._approved = true; }
     }
     renderGroups();
   });
@@ -152,7 +151,7 @@ function showProgress(i, total) {
   $("#progress").classList.remove("hidden");
   const pct = total ? Math.round((i / total) * 100) : 0;
   $("#pfill").style.width = pct + "%";
-  $("#ptext").textContent = `Moving ${i} of ${total} to Recycle Bin… (${pct}%)`;
+  $("#ptext").textContent = `Quarantining ${i} of ${total}… (${pct}%)`;
 }
 
 function showBanner(text, kind) {
@@ -166,12 +165,12 @@ function showBanner(text, kind) {
 $("#remove").addEventListener("click", async () => {
   const items = removalItems();
   if (!items.length) { setStatus("No groups approved."); return; }
-  if (!confirm(`Move ${items.length} duplicate file(s) to the Recycle Bin? You can restore them from there.`)) return;
+  if (!confirm(`Move ${items.length} duplicate file(s) to quarantine? This is reversible — use "Undo last removal" or restore later.`)) return;
 
   $("#banner").classList.add("hidden");
   $("#remove").disabled = true;
   showProgress(0, items.length);
-  setStatus("Removing…", true);
+  setStatus("Quarantining…", true);
 
   let final = null;
   try {
@@ -204,10 +203,9 @@ $("#remove").addEventListener("click", async () => {
   $("#remove").disabled = false;
   setStatus("");
   $("#pfill").style.width = "100%";
-  $("#ptext").textContent = `Finished — ${final.removed} of ${items.length} moved.`;
-  let msg = `✓ Done. Moved ${final.removed} file(s) to the Recycle Bin, freeing ${human(final.freed_bytes)}.`;
+  $("#ptext").textContent = `Finished — ${final.removed} of ${items.length} quarantined.`;
+  let msg = `✓ Done. Quarantined ${final.removed} file(s) (${human(final.moved_bytes)}). Reversible via “Undo last removal”. Empty the quarantine to free the space.`;
   if (final.failed.length) msg += `  ${final.failed.length} failed (${final.failed.map((f) => f.error).join(", ")}).`;
-  msg += "  Restore any from the Recycle Bin if needed.";
   showBanner(msg, final.failed.length ? "err" : "ok");
 
   // drop the copies that were removed; if a group has 1 copy left, it's resolved
@@ -215,4 +213,41 @@ $("#remove").addEventListener("click", async () => {
   for (const g of GROUPS) g.copies = g.copies.filter((c) => !removed.has(c.path));
   GROUPS = GROUPS.filter((g) => g.copies.length > 1);
   renderGroups();
+  refreshQuarantine(final.removed
+    ? { files: (window.QUARANTINE.files || 0) + final.removed, bytes: (window.QUARANTINE.bytes || 0) + final.moved_bytes }
+    : window.QUARANTINE);
 });
+
+/* ---- quarantine status + undo + empty ---- */
+function refreshQuarantine(stats) {
+  window.QUARANTINE = stats || { files: 0, bytes: 0 };
+  const n = window.QUARANTINE.files || 0;
+  $("#quarstatus").textContent = n
+    ? `Quarantine holds ${n} file(s) (${human(window.QUARANTINE.bytes || 0)}) — restorable until emptied.`
+    : "Quarantine is empty.";
+  $("#undo").disabled = !n;
+  $("#empty").disabled = !n;
+}
+
+$("#undo").addEventListener("click", async () => {
+  if (!confirm("Restore the most recent quarantine batch back to its original location?")) return;
+  setStatus("Restoring…", true);
+  const { ok, data } = await postJSON("/api/dedupe/undo", {});
+  setStatus("");
+  if (!ok) { showBanner(data.error || "Nothing to undo.", "err"); return; }
+  showBanner(`↩ Restored ${data.restored} file(s)${data.failed ? `, ${data.failed} failed` : ""}. Re-scan to see them.`, data.failed ? "err" : "ok");
+  refreshQuarantine(data.quarantine);
+});
+
+$("#empty").addEventListener("click", async () => {
+  const n = window.QUARANTINE.files || 0;
+  if (!confirm(`Permanently delete ${n} quarantined file(s)? This FREES the space and canNOT be undone.`)) return;
+  setStatus("Emptying quarantine…", true);
+  const { ok, data } = await postJSON("/api/dedupe/empty", {});
+  setStatus("");
+  if (!ok) { showBanner("Empty failed.", "err"); return; }
+  showBanner(`🗑 Permanently deleted ${data.removed} file(s), freed ${human(data.freed_bytes)}.`, "ok");
+  refreshQuarantine(data.quarantine);
+});
+
+refreshQuarantine(window.QUARANTINE);

@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app as appmod  # noqa: E402
 import apply as apply_mod  # noqa: E402
-import dedupe  # noqa: E402,F401
-import trash  # noqa: E402,F401
+import dedupe  # noqa: E402
+import quarantine  # noqa: E402
 
 
 @pytest.fixture
@@ -128,7 +128,7 @@ def test_index_renders(client):
 def test_dedupe_page_renders(client):
     html = client.get("/dedupe").get_data(as_text=True)
     assert "Duplicate Cleanup" in html
-    assert "window.TRASH_OK" in html
+    assert "window.QUARANTINE" in html
 
 
 # ---- dedupe scan + remove -------------------------------------------------
@@ -164,13 +164,19 @@ def test_dedupe_remove_streams_and_trashes(client, tmp_path, monkeypatch):
     items = [{"path": c["path"], "size": c["size"]}
              for i, c in enumerate(g["copies"]) if i != keep]
 
-    monkeypatch.setattr(trash, "UNDO_DIR", str(tmp_path / "undo"))
-    monkeypatch.setattr(trash, "send2trash", lambda p: os.remove(p))
+    monkeypatch.setattr(quarantine, "UNDO_DIR", str(tmp_path / "undo"))
+    monkeypatch.setattr(quarantine, "_quarantine_root", lambda path: str(tmp_path / "_q"))
 
     resp = client.post("/api/dedupe/remove", json={"items": items})
     events = _stream_lines(resp)
     final = [e for e in events if e.get("done")][0]
     assert final["removed"] == 1
-    assert final["freed_bytes"] == items[0]["size"]
-    # the kept copy still exists, the removed one is gone
+    assert final["moved_bytes"] == items[0]["size"]
+    # the removed copy is moved out of place (now in quarantine)
     assert not os.path.exists(items[0]["path"])
+
+    # in-app undo restores it
+    u = client.post("/api/dedupe/undo", json={})
+    assert u.status_code == 200
+    assert u.get_json()["restored"] == 1
+    assert os.path.exists(items[0]["path"])
