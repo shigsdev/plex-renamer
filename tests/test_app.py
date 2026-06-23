@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app as appmod  # noqa: E402
 import apply as apply_mod  # noqa: E402
+import dedupe  # noqa: E402,F401
+import trash  # noqa: E402,F401
 
 
 @pytest.fixture
@@ -121,3 +123,54 @@ def test_index_renders(client):
     html = client.get("/").get_data(as_text=True)
     assert "Plex Renamer" in html
     assert "window.PROVIDER" in html
+
+
+def test_dedupe_page_renders(client):
+    html = client.get("/dedupe").get_data(as_text=True)
+    assert "Duplicate Cleanup" in html
+    assert "window.TRASH_OK" in html
+
+
+# ---- dedupe scan + remove -------------------------------------------------
+
+def _two_drive_dup(tmp_path):
+    p = tmp_path / "P" / "TV Shows" / "Show" / "Season 1"
+    q = tmp_path / "Q" / "TV Shows" / "Show" / "Season 1"
+    p.mkdir(parents=True)
+    q.mkdir(parents=True)
+    (p / "Show S01E01 1080p.mkv").write_text("xxxx")          # 4 bytes
+    (q / "Show S01E01 2160p.mkv").write_text("xxxxxxxx")      # 8 bytes, higher res
+    raw = f"{tmp_path / 'P' / 'TV Shows'}\n{tmp_path / 'Q' / 'TV Shows'}"
+    return raw
+
+
+def test_dedupe_scan_finds_cross_drive_group(client, tmp_path, monkeypatch):
+    raw = _two_drive_dup(tmp_path)
+    monkeypatch.setattr(dedupe, "_drive_of",
+                        lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
+    data = client.post("/api/dedupe/scan", json={"directory": raw}).get_json()
+    assert data["summary"]["groups"] == 1
+    g = data["groups"][0]
+    assert g["se"] == "S01E01"
+    assert g["copies"][g["suggested_keep"]]["resolution"] == 2160   # keep the 2160p
+
+
+def test_dedupe_remove_streams_and_trashes(client, tmp_path, monkeypatch):
+    raw = _two_drive_dup(tmp_path)
+    monkeypatch.setattr(dedupe, "_drive_of",
+                        lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
+    g = client.post("/api/dedupe/scan", json={"directory": raw}).get_json()["groups"][0]
+    keep = g["suggested_keep"]
+    items = [{"path": c["path"], "size": c["size"]}
+             for i, c in enumerate(g["copies"]) if i != keep]
+
+    monkeypatch.setattr(trash, "UNDO_DIR", str(tmp_path / "undo"))
+    monkeypatch.setattr(trash, "send2trash", lambda p: os.remove(p))
+
+    resp = client.post("/api/dedupe/remove", json={"items": items})
+    events = _stream_lines(resp)
+    final = [e for e in events if e.get("done")][0]
+    assert final["removed"] == 1
+    assert final["freed_bytes"] == items[0]["size"]
+    # the kept copy still exists, the removed one is gone
+    assert not os.path.exists(items[0]["path"])

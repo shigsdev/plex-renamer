@@ -23,8 +23,10 @@ import os
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 import apply as apply_mod
+import dedupe
 import metadata
 import scanner
+import trash
 
 app = Flask(__name__)
 
@@ -33,6 +35,11 @@ app = Flask(__name__)
 def index():
     return render_template("index.html", has_key=metadata.have_key(),
                            provider=metadata.provider_name())
+
+
+@app.get("/dedupe")
+def dedupe_page():
+    return render_template("dedupe.html", trash_ok=trash.available())
 
 
 def _parse_dirs(raw: str) -> list[str]:
@@ -116,6 +123,40 @@ def api_undo():
     return jsonify(reverted=sum(1 for r in results if r.ok),
                    failed=sum(1 for r in results if not r.ok),
                    log=os.path.basename(log))
+
+
+@app.post("/api/dedupe/scan")
+def api_dedupe_scan():
+    """Find cross-drive duplicate episodes. Read-only."""
+    data = request.get_json(force=True)
+    dirs = _parse_dirs(data.get("directory") or "")
+    if not dirs:
+        return jsonify(error="Enter at least one library folder."), 400
+    bad = [d for d in dirs if not os.path.isdir(d)]
+    if bad:
+        return jsonify(error="Not a directory: " + ", ".join(repr(d) for d in bad)), 400
+
+    groups = dedupe.find_duplicates(dirs, cross_drive_only=True)
+    rows = [g.to_dict() for g in groups]
+    summary = {
+        "groups": len(rows),
+        "copies": sum(len(g["copies"]) for g in rows),
+        "reclaimable_bytes": sum(g["reclaimable_bytes"] for g in rows),
+    }
+    return jsonify(groups=rows, summary=summary, trash_ok=trash.available())
+
+
+@app.post("/api/dedupe/remove")
+def api_dedupe_remove():
+    """Stream Recycle-Bin removal progress, then a final summary."""
+    items = request.get_json(force=True).get("items", [])
+
+    @stream_with_context
+    def generate():
+        for event in trash.trash_stream(items):
+            yield json.dumps(event) + "\n"
+
+    return Response(generate(), mimetype="application/x-ndjson")
 
 
 if __name__ == "__main__":

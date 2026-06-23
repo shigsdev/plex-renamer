@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plex Renamer — Duplicate Cleanup</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Duplicate Cleanup <span class="nav"><a href="/">← back to renamer</a></span></h1>
+    <p class="sub">Find the same episode duplicated across drives. You pick which copy to keep
+      for every group — the rest go to the <strong>Recycle Bin</strong> (recoverable).</p>
+    {% if not trash_ok %}
+    <p class="warnline">⚠ <code>Send2Trash</code> isn't installed — removal is disabled.
+      Run <code>pip install Send2Trash</code> and restart.</p>
+    {% endif %}
+  </header>
+
+  <section class="bar">
+    <textarea id="dir" rows="3" placeholder="Library folders to compare — one per line:&#10;P:\TV Shows&#10;R:\TV Shows&#10;Q:\TV Shows&#10;N:\TV Shows"></textarea>
+    <div class="bar-side">
+      <button id="scan">Find duplicates</button>
+    </div>
+    <span id="status" class="status"></span>
+  </section>
+
+  <section id="summary" class="summary hidden"></section>
+
+  <section id="controls" class="controls hidden">
+    <strong>Bulk:</strong>
+    <button data-bulk="suggested">Approve all (keep suggested)</button>
+    <button data-bulk="clear" class="ghost">Clear approvals</button>
+    <span class="spacer"></span>
+    <button id="remove" class="primary">Move approved to Recycle Bin (<span id="approvedCount">0</span> files, <span id="approvedSize">0</span>)</button>
+  </section>
+
+  <section id="progress" class="progress hidden">
+    <div class="pbar"><div id="pfill" class="pfill"></div></div>
+    <div id="ptext" class="ptext"></div>
+  </section>
+
+  <section id="banner" class="banner hidden"></section>
+
+  <section id="results"></section>
+
+  <script>window.TRASH_OK = {{ 'true' if trash_ok else 'false' }};</script>
+  <script src="{{ url_for('static', filename='dedupe.js') }}"></script>
+</body>
+</html>
