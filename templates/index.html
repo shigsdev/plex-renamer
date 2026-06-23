@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plex Renamer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Plex Renamer</h1>
+    <p class="sub">Normalize TV filenames to <code>S##E##</code>. Review every change before it happens.</p>
+  </header>
+
+  <section class="bar">
+    <textarea id="dir" rows="3" placeholder="One or more folders to scan — one per line (or separated by ;):&#10;P:\TV Shows&#10;R:\TV Shows&#10;Q:\TV Shows&#10;N:\TV Shows"></textarea>
+    <div class="bar-side">
+      <label>Force season
+        <input id="season" type="text" placeholder="auto" size="4">
+      </label>
+      <button id="scan">Scan</button>
+    </div>
+    <span id="status" class="status"></span>
+  </section>
+
+  <section id="summary" class="summary hidden"></section>
+
+  <section id="controls" class="controls hidden">
+    <strong>Bulk:</strong>
+    <button data-approve="high">Approve all high</button>
+    <button data-approve="medium">+ medium</button>
+    <button data-approve="all">Approve all renamable</button>
+    <button data-approve="none" class="ghost">Clear all</button>
+    <span class="spacer"></span>
+    <label><input type="checkbox" id="hideSkipped" checked> hide extras / undetermined</label>
+    <button id="apply" class="primary">Apply approved (<span id="approvedCount">0</span>)</button>
+    <button id="undo" class="ghost">Undo last batch</button>
+  </section>
+
+  <section id="progress" class="progress hidden">
+    <div class="pbar"><div id="pfill" class="pfill"></div></div>
+    <div id="ptext" class="ptext"></div>
+  </section>
+
+  <section id="banner" class="banner hidden"></section>
+
+  <section id="results"></section>
+
+  <template id="rowTpl">
+    <tr>
+      <td class="c-approve"><input type="checkbox" class="approve"></td>
+      <td class="c-conf"><span class="badge"></span></td>
+      <td class="c-old"></td>
+      <td class="c-new"><input type="text" class="newname"></td>
+      <td class="c-note"></td>
+      <td class="c-act"></td>
+    </tr>
+  </template>
+
+  <script>
+    window.HAS_KEY = {{ 'true' if has_key else 'false' }};
+    window.PROVIDER = "{{ provider }}";
+  </script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

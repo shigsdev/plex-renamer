@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# pycodestyle (E/W), pyflakes (F), isort (I), bugbear (B), comprehensions (C4),
+# pyupgrade (UP). A pragmatic set for a small app.
+select = ["E", "W", "F", "I", "B", "C4", "UP"]
+ignore = [
+    "E501",   # line length is handled by the formatter; don't hard-fail on it
+    "C408",   # dict(...) is used intentionally in the parser for readability
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

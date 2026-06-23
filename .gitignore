@@ -1,0 +1,19 @@
+# runtime data — never commit (contains your library's file paths)
+undo_logs/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# secrets / env
+.env
+.env.*
+
+# local dev artifacts
+server.log
+.playwright-mcp/

@@ -1,0 +1,128 @@
+"""Parser tests — focused on the real-world patterns and the danger zones
+(years, quality tags, season packs, extras) that earlier versions got wrong."""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import scanner  # noqa: E402
+from scanner import Confidence, Kind  # noqa: E402
+
+
+def p(stem, parent="", season=None, show=""):
+    return scanner.parse(stem, parent, season, show)
+
+
+# ---- clean, high-confidence forms -----------------------------------------
+
+def test_NxNN():
+    r = p("Prison Break - 3x01 - Orientation")
+    assert (r["season"], r["episode"]) == (3, 1)
+    assert r["confidence"] is Confidence.HIGH
+
+
+def test_S_sep_E():
+    r = p("Gangland.2007.S01.E04.American.Gangster.1080p")
+    assert (r["season"], r["episode"]) == (1, 4)
+    assert r["confidence"] is Confidence.HIGH
+
+
+def test_S_space_EP():
+    r = p("Lost S01 EP02 1080p BluRay", parent="Lost S01 1080p")
+    assert (r["season"], r["episode"]) == (1, 2)
+
+
+def test_worded_season_episode():
+    r = p("Ally.McBeal.Season1.Episode.11.Silver.Bells.DVDRip")
+    assert (r["season"], r["episode"]) == (1, 11)
+    assert r["confidence"] is Confidence.HIGH
+
+
+# ---- season inference + new handlers --------------------------------------
+
+def test_episode_only_defaults_season_1_without_folder():
+    r = p("A.Perfect.Planet.EP01.2021.2160p")
+    assert (r["season"], r["episode"]) == (1, 1)
+    assert r["confidence"] is Confidence.MEDIUM
+
+
+def test_part_n_with_folder_season():
+    r = p("JFK Declassified - Part 3 - Oswald Goes Dark", parent="Season 1")
+    assert (r["season"], r["episode"]) == (1, 3)
+
+
+def test_bare_3_digit_code():
+    r = p("murder.in.the.first.210.hdtv-lol")
+    assert (r["season"], r["episode"]) == (2, 10)
+
+
+def test_folder_carries_episode_token():
+    r = p("Dateline.2016.11.12.The.Officers.Wife", parent="S21E57 - Dateline.2016.11.12")
+    assert (r["season"], r["episode"]) == (21, 57)
+    assert r["confidence"] is Confidence.HIGH
+
+
+# ---- daily shows ----------------------------------------------------------
+
+def test_daily_show_is_date_kind():
+    r = p("Dateline.NBC.2016.09.09.Who.Killed.JonBenet.WEB.h264-ROFL")
+    assert r["kind"] is Kind.DATE
+    assert r["airdate"] == "2016-09-09"
+    assert r["needs_lookup"] is True
+
+
+# ---- DANGER ZONES: must NOT fabricate episode numbers ---------------------
+
+def test_year_is_not_parsed_as_code():
+    # 2007 must not become S20E07
+    r = p("Some.Show.2007.1080p.BluRay.x264-GROUP", parent="Season 5")
+    assert r["kind"] is not Kind.EPISODE or (r["season"], r["episode"]) != (20, 7)
+
+
+def test_quality_tag_not_parsed_as_code():
+    # 1080 / 264 must not become an episode
+    r = p("Law and Order SVU S26 1080p AMZN WEB-DL DDP5 1 H 264-NTb", parent="Season 26")
+    assert r["kind"] is Kind.NONE  # season pack, no episode -> undetermined
+
+
+def test_lone_S_number_not_grabbed():
+    r = p("Game of Thrones - S08S07 - The Last Watch", parent="Season 8")
+    # ambiguous junk -> should not confidently emit an episode
+    assert r["kind"] in (Kind.NONE, Kind.SKIP_EXTRA)
+
+
+# ---- extras ---------------------------------------------------------------
+
+def test_extra_is_skipped():
+    r = p("Gag Reel", parent="Extras")
+    assert r["kind"] is Kind.SKIP_EXTRA
+
+
+def test_extra_keyword_in_show_title_is_not_skipped():
+    # "The Making of the Mob" is a real series, not a making-of featurette.
+    r = p("The.Making.Of.The.Mob.Chicago.Part.2.720p", parent="Season 1",
+          show="The Making of the Mob Chicago")
+    assert r["kind"] is Kind.EPISODE
+    assert r["episode"] == 2
+
+
+# ---- name construction ----------------------------------------------------
+
+def test_build_episode_name_strips_code_and_junk():
+    name = scanner.build_episode_name("heroes.406.tabula.rasa-sitv", ".mkv", 4, 6)
+    assert name == "heroes tabula rasa - S04E06.mkv"
+
+
+def test_build_date_name_is_clean():
+    name = scanner.build_date_name(
+        "Dateline.2017.02.10.Fury.720p.WEBRip.AAC2.0.x264-BTW", ".mkv",
+        "Dateline NBC", "2017-02-10")
+    assert name == "Dateline NBC - 2017-02-10 - Fury.mkv"
+
+
+def test_already_canonical_is_left_alone(tmp_path):
+    f = tmp_path / "Show S01E01 1080p.mkv"
+    f.write_text("")
+    props = scanner.scan(str(tmp_path))
+    assert props == []  # nothing needs attention
