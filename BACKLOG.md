@@ -33,9 +33,14 @@ episode is simply the same `(library, show, season, episode)` appearing on more
 than one drive. Without consistent naming the match is fuzzy and error-prone, so
 **run the renamer across all drives first**, then dedupe.
 
+**Status:** finder logic BUILT (`dedupe.py` + `tests/test_dedupe.py`, read-only).
+A real scan on 2026-06-23 found **1,258 cross-drive duplicate episodes,
+~2 TB reclaimable**. Remaining: review UI + Recycle-Bin removal engine + undo.
+
 **Design (mirror the renamer's safety model):**
-1. **Scan** all drives, group video files by `(library, show, S##E##)` (or by
-   air-date for daily shows). A group with copies on ≥2 drives is a duplicate set.
+1. ✅ **Scan** all drives, group video files by `(library, show, S##E##)`. Works
+   even pre-rename (parses messy names via `scanner.parse`). `dedupe.find_duplicates`
+   returns groups with per-copy drive/size/resolution + a suggested keeper.
 2. **Review UI** — for each duplicate set show every copy with its **drive, full
    path, file size, resolution** (parse `1080p/2160p` from name), and a suggested
    "keep" pick. Per-group radio to choose which copy to keep; bulk policies.
@@ -43,10 +48,14 @@ than one drive. Without consistent naming the match is fuzzy and error-prone, so
    `send2trash`), never a hard delete, so it's recoverable. Log every move.
 4. **Undo** — restore from the log / Recycle Bin.
 
+**Decisions:**
+- **Keep-which-copy = MANUAL per group (decided 2026-06-23).** The user must
+  approve which copy to keep for each duplicate set; nothing is removed without an
+  explicit per-group selection. The tool *suggests* a default (highest resolution,
+  tie-break largest file) purely to speed review — it is a pre-selection, never an
+  auto-action.
+
 **Open decisions (resolve before building):**
-- Keep-which-copy policy: highest resolution? largest file? a preferred-drive
-  priority order (e.g. R > P > N)? or always manual per group? Probably:
-  default = highest resolution, tie-break largest file, with manual override.
 - Near-duplicates: same episode at different quality (1080p vs 2160p) — treat as
   duplicate (keep best) or keep both? Likely keep-best by default, flag for review.
 - Partial overlap: a show on two drives where the *episode sets differ* (each has
