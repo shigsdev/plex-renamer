@@ -37,6 +37,7 @@ CANONICAL_SE = re.compile(r"[Ss]\d{1,2}[Ee]\d{1,3}")
 # is the load-bearing defense against turning "x264" into S02E64 or "1080p" into
 # S10E80. Case-insensitive, whole-token.
 _JUNK_PATTERNS = [
+    r"\b\d{3,4}\s*[xX]\s*\d{3,4}\b",      # WxH resolution: 1920x1080, 1280x720
     r"\b\d{3,4}p\b",                      # 480p 720p 1080p 2160p
     r"\b(?:x|h)[ ._-]?26[45]\b",          # x264 x265 h264 h265 h 264
     r"\bhevc\b", r"\bavc\b", r"\bxvid\b", r"\bdivx\b",
@@ -128,8 +129,10 @@ def _clean_for_code(stem: str) -> str:
 
 def _tidy_title(text: str) -> str:
     """Collapse separators/whitespace in leftover title text."""
+    text = re.sub(r"[([{]\s*[)\]}]", " ", text)   # empty () [] {} left by stripping
     text = re.sub(r"[ _.]+", " ", text)
     text = re.sub(r"\s*-\s*-\s*", " - ", text)
+    text = re.sub(r"\s+([)\]}])", r"\1", text)      # " )" -> ")"
     return text.strip(" _.-")
 
 
@@ -220,7 +223,16 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
                     season=s, episode=int(m.group(1)),
                     note=f"Part {m.group(1)} as episode, season {s}")
 
-    # 8. Bare 3-4 digit code (after stripping quality/codec/year junk).
+    # 8. Leading episode number: "01 Title", "02 - Title" (needs a season folder).
+    # Only 1-2 digits + separator + non-digit, so 3-digit codes ("104 ...") fall
+    # through to the bare-code handler and years ("1922 ...") don't match.
+    m = re.match(r"\s*(\d{1,2})[ ._-]+\D", stem)
+    if m and folder_season is not None:
+        return dict(kind=Kind.EPISODE, confidence=Confidence.MEDIUM,
+                    season=folder_season, episode=int(m.group(1)),
+                    note=f"leading number {m.group(1)} as episode, season {folder_season} from folder")
+
+    # 9. Bare 3-4 digit code (after stripping quality/codec/year junk).
     cleaned = _clean_for_code(stem)
     codes = re.findall(r"(?<!\d)(\d{3,4})(?!\d)", cleaned)
     for code in codes:
@@ -264,6 +276,8 @@ def build_episode_name(stem: str, ext: str, season: int, episode: int) -> str:
     cleaned = re.sub(r"season[ _.-]*\d{1,2}.*?(?:episode|ep)[ _.-]*\d{1,3}", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"(?:episode|ep)[ _.-]*\d{1,3}(?!\d)", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\bpart[ ._-]*\d{1,3}\b", " ", cleaned, flags=re.IGNORECASE)
+    # Drop a leading episode number we interpreted (e.g. "01 Title" -> "Title").
+    cleaned = re.sub(rf"^\s*0*{episode}[ ._-]+", " ", cleaned)
     # Drop the bare 3-4 digit code we interpreted (e.g. "210", "0406").
     for code in (f"{season}{episode:02d}", f"{season:02d}{episode:02d}"):
         cleaned = re.sub(rf"(?<!\d){code}(?!\d)", " ", cleaned)

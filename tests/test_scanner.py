@@ -86,6 +86,39 @@ def test_quality_tag_not_parsed_as_code():
     assert r["kind"] is Kind.NONE  # season pack, no episode -> undetermined
 
 
+def test_wxh_resolution_not_parsed_as_episode():
+    # "1920x1080" is a resolution — must NOT become S19E20 (the A Football Life bug)
+    r = p("Some Show Name (1920x1080)", parent="Season 4")
+    assert r["kind"] is not Kind.EPISODE or (r["season"], r["episode"]) != (19, 20)
+
+
+def test_leading_episode_number_with_season_folder():
+    r = p("01 A Football Life Bill Belichick, Pt. 1 (1920x1080) [Phr0stY]",
+          parent="Season 1", show="A Football Life")
+    assert (r["season"], r["episode"]) == (1, 1)
+
+
+def test_three_digit_leading_is_still_a_code_not_episode_104():
+    # "104 Title" -> S01E04 via the bare-code handler, not episode 104
+    r = p("104 Title Goes Here", parent="Season 1")
+    assert (r["season"], r["episode"]) == (1, 4)
+
+
+def test_leading_year_is_not_an_episode():
+    r = p("1922 The Movie", parent="Season 1")
+    assert r["kind"] is Kind.NONE
+
+
+def test_build_name_strips_leading_number_and_resolution():
+    name = scanner.build_episode_name(
+        "01 A Football Life Kurt Warner (1920x1080) [Phr0stY] ", ".mkv", 1, 4)
+    assert "1920x1080" not in name
+    assert "[Phr0stY]" not in name
+    assert "( )" not in name and "()" not in name
+    assert name.endswith(" - S01E04.mkv")
+    assert name.startswith("A Football Life Kurt Warner")
+
+
 def test_lone_S_number_not_grabbed():
     r = p("Game of Thrones - S08S07 - The Last Watch", parent="Season 8")
     # ambiguous junk -> should not confidently emit an episode
