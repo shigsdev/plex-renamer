@@ -130,6 +130,30 @@ def test_lookup_success_returns_episode_name(client, monkeypatch):
     assert "S25E07" in data["new_name"]
 
 
+def test_lookup_validate_corrects_high_episode_number(client, monkeypatch):
+    monkeypatch.setattr(appmod.metadata, "have_key", lambda: True)
+    monkeypatch.setattr(appmod.metadata, "validate_episode",
+                        lambda show, s, e: {"season": 3, "episode": 17, "corrected": True,
+                                            "exists": True, "provider": "tvdb"})
+    r = client.post("/api/lookup", json={
+        "show": "Lois and Clark", "season": 3, "episode": 61,
+        "path": "P:/TV/Lois and Clark/Season 3/lois.and.clark.e61.seconds.mkv"})
+    data = r.get_json()
+    assert data["found"] is True and data["corrected"] is True
+    assert (data["season"], data["episode"]) == (3, 17)
+    assert "S03E17" in data["new_name"]
+
+
+def test_lookup_validate_flags_not_found(client, monkeypatch):
+    monkeypatch.setattr(appmod.metadata, "have_key", lambda: True)
+    monkeypatch.setattr(appmod.metadata, "validate_episode",
+                        lambda show, s, e: {"season": s, "episode": e, "corrected": False,
+                                            "exists": False, "provider": "tvdb"})
+    r = client.post("/api/lookup", json={"show": "X", "season": 9, "episode": 99, "path": "x.mkv"})
+    data = r.get_json()
+    assert data["found"] is True and data["exists"] is False and data["corrected"] is False
+
+
 def test_lookup_by_absolute_returns_episode_name(client, monkeypatch):
     monkeypatch.setattr(appmod.metadata, "have_key", lambda: True)
     called = {}

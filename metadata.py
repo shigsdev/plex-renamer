@@ -74,6 +74,20 @@ def lookup_by_absolute(show_name: str, absolute: int) -> dict | None:
     return _tmdb_lookup_by_absolute(show_name, absolute)
 
 
+def validate_episode(show_name: str, season: int, episode: int) -> dict | None:
+    """Validate a provisional season/episode against the provider, correcting it
+    when possible. Returns None if it can't be validated (no key / show not
+    found / nothing matches). Otherwise:
+      {"season", "episode", "corrected": bool, "exists": bool, "provider"}
+    - exists=True, corrected=False  -> the proposal is a real episode (confirmed)
+    - corrected=True                -> S##E## didn't exist; resolved the number as
+                                       an ABSOLUTE position to the real episode
+    """
+    if _provider() == "tvdb":
+        return _tvdb_validate(show_name, season, episode)
+    return _tmdb_validate(show_name, season, episode)
+
+
 # ---------------------------------------------------------------------------
 # Shared HTTP helpers
 # ---------------------------------------------------------------------------
@@ -139,19 +153,44 @@ def _tmdb_lookup_by_airdate(show_name: str, airdate: str) -> dict | None:
     return None
 
 
+def _tmdb_ordered(show_id: int) -> list[tuple[int, int]]:
+    """All (season, episode) flattened in season/episode order (best-effort
+    absolute order, since TMDB has no absolute numbers)."""
+    out: list[tuple[int, int]] = []
+    for season in range(1, _tmdb_num_seasons(show_id) + 1):
+        for _ad, s, e in sorted(_tmdb_season(show_id, season), key=lambda t: (t[1], t[2])):
+            out.append((s, e))
+    return out
+
+
 def _tmdb_lookup_by_absolute(show_name: str, absolute: int) -> dict | None:
-    """TMDB has no absolute numbers, so approximate by flattening seasons 1..N in
-    order — the Nth aired episode is taken as absolute N (best effort)."""
     show_id = _tmdb_show_id(show_name)
     if not show_id:
         return None
-    count = 0
-    for season in range(1, _tmdb_num_seasons(show_id) + 1):
-        for _ad, s, e in sorted(_tmdb_season(show_id, season), key=lambda t: (t[1], t[2])):
-            count += 1
-            if count == absolute:
-                return {"season": s, "episode": e, "provider": "tmdb"}
+    ordered = _tmdb_ordered(show_id)
+    if 1 <= absolute <= len(ordered):
+        s, e = ordered[absolute - 1]
+        return {"season": s, "episode": e, "provider": "tmdb"}
     return None
+
+
+def _tmdb_validate(show_name: str, season: int, episode: int) -> dict | None:
+    show_id = _tmdb_show_id(show_name)
+    if not show_id:
+        return None
+    ordered = _tmdb_ordered(show_id)
+    if not ordered:
+        return None
+    exists = set(ordered)
+    if (season, episode) in exists:
+        return {"season": season, "episode": episode, "corrected": False,
+                "exists": True, "provider": "tmdb"}
+    if 1 <= episode <= len(ordered) and ordered[episode - 1] in exists:
+        s, e = ordered[episode - 1]
+        return {"season": s, "episode": e, "corrected": True, "exists": True,
+                "provider": "tmdb"}
+    return {"season": season, "episode": episode, "corrected": False,
+            "exists": False, "provider": "tmdb"}
 
 
 # ---------------------------------------------------------------------------
@@ -201,10 +240,16 @@ def _tvdb_show_id(name: str) -> int | None:
 
 @lru_cache(maxsize=32)
 def _tvdb_episode_index(show_id: int) -> dict:
-    """Page a series' episodes ONCE and build both indexes — {airdate: (s, e)}
-    and {absolute_number: (s, e)} — so repeated lookups are O(1)."""
+    """Page a series' episodes ONCE and build indexes so lookups are O(1):
+      air     {airdate: (s, e)}
+      abs     {absoluteNumber: (s, e)}  (TVDB's explicit field; may be sparse)
+      ordered [(s, e), ...] sorted by (season, number), excluding specials —
+              used as a computed absolute position when ``abs`` is missing
+      exists  frozenset of (s, e) — for validating a proposed episode
+    """
     by_air: dict[str, tuple[int, int]] = {}
     by_abs: dict[int, tuple[int, int]] = {}
+    all_eps: list[tuple[int, int]] = []
     url = f"/series/{show_id}/episodes/default?page=0"
     for _ in range(50):  # hard page cap
         data = _tvdb_get(url)
@@ -214,6 +259,7 @@ def _tvdb_episode_index(show_id: int) -> dict:
             se = (ep.get("seasonNumber"), ep.get("number"))
             if None in se:
                 continue
+            all_eps.append(se)
             if ep.get("aired"):
                 by_air.setdefault(ep["aired"], se)
             if ep.get("absoluteNumber") is not None:
@@ -222,7 +268,17 @@ def _tvdb_episode_index(show_id: int) -> dict:
         if not nxt:
             break
         url = nxt
-    return {"air": by_air, "abs": by_abs}
+    ordered = tuple(se for se in sorted(set(all_eps)) if se[0] and se[0] > 0)
+    return {"air": by_air, "abs": by_abs, "ordered": ordered, "exists": frozenset(all_eps)}
+
+
+def _abs_from_index(idx: dict, absolute: int) -> tuple[int, int] | None:
+    """Explicit absolute number, else the Nth episode in season/number order."""
+    if absolute in idx["abs"]:
+        return idx["abs"][absolute]
+    if 1 <= absolute <= len(idx["ordered"]):
+        return idx["ordered"][absolute - 1]
+    return None
 
 
 def _tvdb_lookup_by_airdate(show_name: str, airdate: str) -> dict | None:
@@ -237,5 +293,24 @@ def _tvdb_lookup_by_absolute(show_name: str, absolute: int) -> dict | None:
     show_id = _tvdb_show_id(show_name)
     if not show_id:
         return None
-    se = _tvdb_episode_index(show_id)["abs"].get(absolute)
+    se = _abs_from_index(_tvdb_episode_index(show_id), absolute)
     return {"season": se[0], "episode": se[1], "provider": "tvdb"} if se else None
+
+
+def _tvdb_validate(show_name: str, season: int, episode: int) -> dict | None:
+    show_id = _tvdb_show_id(show_name)
+    if not show_id:
+        return None
+    idx = _tvdb_episode_index(show_id)
+    if not idx["exists"]:
+        return None
+    if (season, episode) in idx["exists"]:
+        return {"season": season, "episode": episode, "corrected": False,
+                "exists": True, "provider": "tvdb"}
+    # S##E## isn't real — the number may be an absolute position; resolve it.
+    se = _abs_from_index(idx, episode)
+    if se and se in idx["exists"]:
+        return {"season": se[0], "episode": se[1], "corrected": True,
+                "exists": True, "provider": "tvdb"}
+    return {"season": season, "episode": episode, "corrected": False,
+            "exists": False, "provider": "tvdb"}

@@ -82,6 +82,10 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .metastatus { margin: 0 24px 4px; padding: 8px 12px; border-radius: 6px; font-size: 13px;
   border: 1px solid var(--line); background: var(--panel); }
 .metastatus.ok { color: #cfeede; border-color: var(--high); }
+.valtag { font-weight: 600; }
+.valtag.corrected, .valtag.ok { color: #6fcaa0; }
+.valtag.confirmed { color: var(--muted); }
+.valtag.notfound { color: #e0b050; }
 .dupgroup { border-top: 1px solid var(--line); padding: 8px 14px; }
 .dupgroup.approved { background: rgba(176, 123, 30, 0.12); }
 .dupapprove { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; cursor: pointer; }

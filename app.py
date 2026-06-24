@@ -106,17 +106,28 @@ def api_lookup():
     show = data.get("show", "")
     if not metadata.have_key():
         return jsonify(error="No metadata API key set."), 400
-    if data.get("absolute") is not None:
+
+    if data.get("airdate"):                         # daily show -> by air date
+        hit = metadata.lookup_by_airdate(show, data["airdate"])
+        corrected, exists = bool(hit), bool(hit)
+    elif data.get("season") is not None and data.get("episode") is not None:
+        hit = metadata.validate_episode(show, int(data["season"]), int(data["episode"]))
+        corrected = bool(hit and hit.get("corrected"))
+        exists = bool(hit and hit.get("exists"))
+    elif data.get("absolute") is not None:          # explicit absolute number
         hit = metadata.lookup_by_absolute(show, int(data["absolute"]))
+        corrected, exists = bool(hit), bool(hit)
     else:
-        hit = metadata.lookup_by_airdate(show, data.get("airdate", ""))
+        hit = None
+        corrected = exists = False
+
     if not hit:
-        return jsonify(found=False)
-    # Rebuild the name from the original stem with the resolved S##E##.
+        return jsonify(found=False, exists=False)
     stem, ext = os.path.splitext(os.path.basename(data.get("path", "")))
-    new_name = scanner.build_episode_name(stem, ext, hit["season"], hit["episode"])
-    return jsonify(found=True, season=hit["season"], episode=hit["episode"],
-                   new_name=new_name)
+    new_name = scanner.build_episode_name(stem, ext, hit["season"], hit["episode"],
+                                          data.get("episode_end"))
+    return jsonify(found=True, exists=exists, corrected=corrected,
+                   season=hit["season"], episode=hit["episode"], new_name=new_name)
 
 
 @app.post("/api/apply")

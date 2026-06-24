@@ -252,8 +252,13 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
         n = int(m.group(1))
         end = _range_end(stem, m.end(), n)   # multi: "e01-02", "EP01-02"
         if folder_season is not None:
+            # A bare "episode N" number can be SEASON-RELATIVE or an ABSOLUTE
+            # count (e.g. "e61" in a Season 3 folder where seasons are ~22). Flag
+            # it for a TVDB validation that confirms S{folder}E{n} or remaps the
+            # absolute number — unless it's an explicit multi range.
             d = dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
                      season=folder_season, episode=n,
+                     needs_lookup=(end is None),
                      note=f"ep {n} from name, season {folder_season} from folder")
         elif end is not None:
             # explicit multi range -> not an absolute-number candidate
@@ -439,12 +444,18 @@ def scan(root: str, *, forced_season: int | None = None,
                 continue
 
             r = parse(stem, parent, forced_season, show)
+            needs_lookup = r.get("needs_lookup", False)
+            # Validate medium/guess single-episode guesses against the metadata
+            # provider too (confirm the S##E## exists or correct it).
+            if (r["kind"] is Kind.EPISODE and r.get("episode_end") is None
+                    and r["confidence"] in (Confidence.MEDIUM, Confidence.GUESS)):
+                needs_lookup = True
             p = Proposal(full, show, rel_dir, fname,
                          kind=r["kind"].value, confidence=r["confidence"].value,
                          season=r.get("season"), episode=r.get("episode"),
                          episode_end=r.get("episode_end"),
                          airdate=r.get("airdate"), absolute=r.get("absolute"),
-                         note=r["note"], needs_lookup=r.get("needs_lookup", False))
+                         note=r["note"], needs_lookup=needs_lookup)
 
             if r["kind"] is Kind.EPISODE:
                 p.new_name = build_episode_name(stem, ext, r["season"], r["episode"],

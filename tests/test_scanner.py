@@ -202,10 +202,13 @@ def test_episode_without_season_is_absolute_candidate():
     assert r["needs_lookup"] is True
 
 
-def test_episode_with_season_folder_is_not_absolute_candidate():
+def test_episode_with_season_folder_is_validated_not_absolute():
+    # folder gives the season, but a bare "episode N" number could be absolute,
+    # so it's flagged for a TVDB *validation* (not an absolute-only candidate)
     r = p("show.episode.4", parent="Season 2", show="Show")
     assert (r["season"], r["episode"]) == (2, 4)
-    assert not r.get("needs_lookup")
+    assert r.get("absolute") is None       # not an absolute-only candidate
+    assert r.get("needs_lookup") is True   # but validated against TVDB
 
 
 def test_bare_e_does_not_overmatch_show_titles():

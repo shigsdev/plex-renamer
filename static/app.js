@@ -130,27 +130,50 @@ function renderRows() {
   if (dc) dc.textContent = ROWS.filter((r) => r.needs_lookup).length;
 }
 
-/* ---- metadata lookup (TVDB/TMDB): air-date for daily shows, absolute # for
-   "episode N" files without a season. Runs automatically after each scan. ---- */
+/* ---- metadata lookup/validation (TVDB/TMDB), automatic after each scan ----
+   - daily shows: resolve by air date
+   - medium/below episodes: validate the S##E## exists, correct it if the number
+     was actually an absolute count, or flag it if TVDB has no such episode. ---- */
 async function lookupAllDates() {
   const rows = ROWS.filter((r) => r.needs_lookup);
   if (!rows.length) { setStatus("Nothing needs an episode lookup."); return; }
   const btn = $("#lookupAll");
   if (btn) btn.disabled = true;
-  let found = 0;
+  let corrected = 0, confirmed = 0, notfound = 0, dateMatched = 0;
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    setStatus(`Looking up episode numbers… ${i + 1}/${rows.length}`, true);
+    setStatus(`Looking up / validating with TVDB… ${i + 1}/${rows.length}`, true);
+    const body = { show: r.show, path: r.path, episode_end: r.episode_end };
+    if (r.kind === "date") body.airdate = r.airdate;
+    else { body.season = r.season; body.episode = r.episode; }
     try {
-      const { data } = await postJSON("/api/lookup",
-        { show: r.show, airdate: r.airdate, absolute: r.absolute, path: r.path });
-      if (data.found) { r.new_name = data.new_name; r._looked = true; found++; }
+      const { data } = await postJSON("/api/lookup", body);
+      if (r.kind === "date") {
+        if (data.found) { r.new_name = data.new_name; r._val = "ok"; dateMatched++; }
+        else { r._val = "notfound"; }
+      } else if (data.found && data.corrected) {
+        r.new_name = data.new_name; r._val = "corrected"; corrected++;
+      } else if (data.found && data.exists) {
+        r._val = "confirmed"; confirmed++;
+      } else {
+        r._val = "notfound"; notfound++;
+      }
     } catch { /* keep going */ }
   }
   if (btn) btn.disabled = false;
-  setStatus(`Episode lookup: matched ${found} of ${rows.length} file(s).`);
+  const dates = rows.filter((r) => r.kind === "date").length;
+  const val = rows.length - dates;
+  let msg = "";
+  if (dates) msg += `Daily shows: matched ${dateMatched}/${dates}. `;
+  if (val) msg += `Validated ${val}: ${confirmed} confirmed, ${corrected} corrected, ${notfound} not found in TVDB.`;
+  setStatus(msg.trim() || "Lookup complete.");
   renderRows();
 }
+
+const _VAL_LABEL = {
+  corrected: "✓ corrected via TVDB", confirmed: "✓ confirmed via TVDB",
+  ok: "✓ via TVDB", notfound: "⚠ not found in TVDB — review",
+};
 
 function syncGroupCheckbox(cb, changedRows) {
   const approved = changedRows.filter((r) => r._approved).length;
@@ -184,7 +207,10 @@ function buildRow(row) {
     h("td", { class: "c-conf" }, badge),
     h("td", { class: "c-old", text: row.old_name }),
     h("td", { class: "c-new" }, input),
-    h("td", { class: "c-note", text: row.note }),
+    h("td", { class: "c-note" }, [
+      row.note,
+      row._val ? h("span", { class: `valtag ${row._val}`, text: ` ${_VAL_LABEL[row._val] || ""}` }) : null,
+    ]),
     actions,
   ]);
   return tr;

@@ -82,6 +82,34 @@ def test_tvdb_airdate_match_with_pagination(monkeypatch):
     assert hit == {"season": 21, "episode": 57, "provider": "tvdb"}
 
 
+def test_tvdb_validate_confirms_corrects_and_flags(monkeypatch):
+    _clear_caches()
+    monkeypatch.setenv("METADATA_PROVIDER", "tvdb")
+    monkeypatch.setenv("TVDB_API_KEY", "x")
+    metadata._tvdb_token = "tok"
+
+    # a small 2-season show: S1E1..E3, S2E1..E3 (6 episodes, no absolute field)
+    eps = [{"seasonNumber": s, "number": e} for s in (1, 2) for e in (1, 2, 3)]
+    pages = {"/series/5/episodes/default?page=0": {
+        "data": {"episodes": eps}, "links": {"next": None}}}
+
+    def fake_get(path):
+        if path.startswith("/search"):
+            return {"data": [{"tvdb_id": 5}]}
+        return pages.get(path)
+
+    monkeypatch.setattr(metadata, "_tvdb_get", fake_get)
+    # real episode -> confirmed
+    assert metadata.validate_episode("X", 2, 3) == \
+        {"season": 2, "episode": 3, "corrected": False, "exists": True, "provider": "tvdb"}
+    # S1E5 doesn't exist; absolute 5 (ordered) -> S2E2 -> corrected
+    assert metadata.validate_episode("X", 1, 5) == \
+        {"season": 2, "episode": 2, "corrected": True, "exists": True, "provider": "tvdb"}
+    # nothing matches (episode 99) -> flagged, not corrected
+    out = metadata.validate_episode("X", 9, 99)
+    assert out["exists"] is False and out["corrected"] is False
+
+
 def test_tvdb_absolute_match(monkeypatch):
     _clear_caches()
     monkeypatch.setenv("METADATA_PROVIDER", "tvdb")
