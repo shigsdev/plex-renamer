@@ -29,8 +29,18 @@ VIDEO_EXTS = {
     ".mpg", ".mpeg", ".ts", ".m2ts", ".flv", ".webm",
 }
 
-# Canonical token Plex wants. If the stem already has it, we leave the file alone.
+# The canonical output token. Used when building names and reading folder tokens.
 CANONICAL_SE = re.compile(r"[Ss]\d{1,2}[Ee]\d{1,3}")
+
+# Plex ALSO matches S## and E## with a separator between them ("S02.E04",
+# "S02 E04"), so a file already in any of those forms is left alone — no churn.
+# (E must be followed directly by a digit, so "S01 EP01" is still normalized.)
+PLEX_OK_SE = re.compile(r"[Ss]\d{1,2}[ ._-]*[Ee]\d{1,3}")
+
+# 4-digit years: junk for episode-CODE matching (so "1994" never becomes S19E94),
+# but KEPT in the displayed title (Plex uses the year to disambiguate, e.g.
+# "Iron Man 1994"). So it lives only in _JUNK_RE, not _DISPLAY_JUNK_RE.
+_YEAR = r"\b(?:19|20)\d{2}\b"
 
 # Junk tokens that contain digits and would fool a "bare 3-4 digit episode code"
 # search. Stripped (for matching only) before that handler runs. Order/scope here
@@ -49,9 +59,12 @@ _JUNK_PATTERNS = [
     r"\bblu[ ._-]?ray\b", r"\bbdrip\b", r"\bbrrip\b", r"\bweb[ ._-]?dl\b",
     r"\bwebrip\b", r"\bweb\b", r"\bhdtv\b", r"\bdvdrip\b", r"\bdvd\b",
     r"\bremux\b", r"\brepack\b", r"\bproper\b", r"\binternal\b",
-    r"\b(?:19|20)\d{2}\b",                 # 4-digit years
     r"\bAMZN\b", r"\bNF\b", r"\bDSNP\b", r"\bHMAX\b",
 ]
+# For display (title building) — same junk minus the year, so years stay in titles.
+_DISPLAY_JUNK_RE = re.compile("|".join(_JUNK_PATTERNS), re.IGNORECASE)
+# For episode-code matching — junk PLUS years.
+_JUNK_PATTERNS = _JUNK_PATTERNS + [_YEAR]
 _JUNK_RE = re.compile("|".join(_JUNK_PATTERNS), re.IGNORECASE)
 
 # Anything matching these is an extra/special/featurette — NEVER assign an
@@ -138,9 +151,9 @@ def _tidy_title(text: str) -> str:
 
 def _strip_release_junk(text: str) -> str:
     """Remove quality/codec/source junk, [bracket] tags, and a trailing
-    -RELEASEGROUP, leaving a human-readable title. Conservative: only strips a
-    trailing -token when it directly follows stripped junk or is all-caps/short."""
-    text = _JUNK_RE.sub(" ", text)
+    -RELEASEGROUP, leaving a human-readable title. Years are KEPT (Plex uses them
+    to disambiguate). Conservative on trailing -token: only all-caps/lowercase."""
+    text = _DISPLAY_JUNK_RE.sub(" ", text)
     text = re.sub(r"\[[^\]]*\]", " ", text)                 # [PRiME], [ExYu-Subs]
     # Trailing release group: only all-caps or all-lowercase tokens (BTW, ROFL,
     # vfua, lol) — NOT Titlecase words, so a title ending in "Pilot" survives.
@@ -331,12 +344,12 @@ def scan(root: str, *, forced_season: int | None = None,
                 continue
             full = os.path.join(dirpath, fname)
 
-            if CANONICAL_SE.search(stem):
+            if PLEX_OK_SE.search(stem):
                 if include_ok:
                     out.append(Proposal(full, show, rel_dir, fname,
                                         kind=Kind.SKIP_OK.value,
                                         confidence=Confidence.NONE.value,
-                                        note="already has S##E##"))
+                                        note="already Plex-readable (S##E## / S##.E## / S## E##)"))
                 continue
 
             r = parse(stem, parent, forced_season, show)

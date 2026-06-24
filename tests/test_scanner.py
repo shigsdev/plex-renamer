@@ -86,6 +86,30 @@ def test_quality_tag_not_parsed_as_code():
     assert r["kind"] is Kind.NONE  # season pack, no episode -> undetermined
 
 
+def test_separator_SE_is_plex_ok_and_left_alone(tmp_path):
+    # "S02.E04" and "S02 E04" are Plex-readable, so don't churn them
+    d = tmp_path / "Gangland (2007)" / "Season 2"
+    d.mkdir(parents=True)
+    (d / "Gangland.2007.S02.E04.Maniacal.1080p.Blu-ray.X.265.AC3.2.0.mkv").write_text("")
+    (d / "Gangland 2007 S02 E05 Lords.mkv").write_text("")
+    assert scanner.scan(str(tmp_path)) == []
+
+
+def test_S_space_EP_is_still_normalized(tmp_path):
+    # "S01 EP01" (E followed by a letter) is NOT Plex-readable -> still renamed
+    d = tmp_path / "Lost" / "Season 1"
+    d.mkdir(parents=True)
+    (d / "Lost S01 EP02 1080p.mkv").write_text("")
+    props = [p for p in scanner.scan(str(tmp_path)) if p.changed]
+    assert len(props) == 1
+    assert "S01E02" in props[0].new_name
+
+
+def test_year_kept_in_built_title():
+    name = scanner.build_episode_name("Iron.Man.1994.1x01.DVDRip.x264.[gd]", ".mkv", 1, 1)
+    assert name == "Iron Man 1994 - S01E01.mkv"
+
+
 def test_wxh_resolution_not_parsed_as_episode():
     # "1920x1080" is a resolution — must NOT become S19E20 (the A Football Life bug)
     r = p("Some Show Name (1920x1080)", parent="Season 4")
