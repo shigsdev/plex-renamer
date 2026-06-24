@@ -98,6 +98,21 @@ def test_show_name_robust_to_scan_depth(tmp_path):
     assert scanner._show_name(str(tmp_path / "P"), str(s)) == "Dateline NBC"
 
 
+def test_scan_skips_recycle_and_system_folders(tmp_path):
+    lib = tmp_path / "TV Shows"
+    (lib / "MyShow" / "Season 1").mkdir(parents=True)
+    (lib / "MyShow" / "Season 1" / "MyShow.1x01.mkv").write_text("")
+    # NAS recycle + snapshot copies that must be ignored
+    for junk in ("@Recycle", "@Recently-Snapshot", "#recycle", "$RECYCLE.BIN"):
+        d = lib / junk / "MyShow"
+        d.mkdir(parents=True)
+        (d / "MyShow.1x02.mkv").write_text("")
+    props = [p for p in scanner.scan(str(tmp_path)) if p.changed]
+    # only the real Season 1 file — the 4 recycle/system copies are skipped
+    assert len(props) == 1
+    assert os.path.join("Season 1", "MyShow.1x01.mkv") in props[0].path
+
+
 def test_show_name_does_not_treat_show_titled_like_library_as_container():
     # "Show Me a Hero" must not be read as a "Shows" library folder
     assert scanner._show_name("P:/TV Shows", "P:/TV Shows/Show Me a Hero/Season 1") == "Show Me a Hero"

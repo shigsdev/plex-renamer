@@ -342,6 +342,14 @@ _SEASON_FOLDER_RE = re.compile(r"^(?:season|series)\b|^s\d{1,2}$|^specials$", re
 # Specific enough not to match real show titles ("Show Me a Hero", "Movie 43").
 _LIBRARY_FOLDER_RE = re.compile(r"^(?:tv[ ._-]?shows|movies|anime)\b", re.IGNORECASE)
 
+# NAS / OS recycle-bin, snapshot and system folders — never scan into these.
+_EXCLUDE_DIR_RE = re.compile(
+    r"^(?:@recycle|@recently-snapshot|@eadir|@sharebin|#recycle|#snapshot|"
+    r"\.trash|\.trashes|\$recycle\.bin|system volume information|lost\+found|"
+    r"\.@__thumb|@tmp)$",
+    re.IGNORECASE,
+)
+
 
 def _show_name(root: str, dirpath: str) -> str:
     """Series name, robust to how deep you scan.
@@ -369,10 +377,12 @@ def scan(root: str, *, forced_season: int | None = None,
     """Walk ``root`` and return a Proposal per video file that needs attention.
 
     By default already-correct files are omitted (``include_ok=True`` to keep
-    them, e.g. for stats).
+    them, e.g. for stats). NAS recycle/snapshot/system folders are skipped, so
+    scanning a whole drive doesn't touch deleted or thumbnail copies.
     """
     out: list[Proposal] = []
-    for dirpath, _dirs, files in os.walk(root):
+    for dirpath, dirnames, files in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not _EXCLUDE_DIR_RE.match(d)]
         parent = os.path.basename(dirpath)
         show = _show_name(root, dirpath)
         rel_dir = os.path.relpath(dirpath, root)

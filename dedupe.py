@@ -118,7 +118,8 @@ def _walk_scandir(root: str):
             for e in it:
                 try:
                     if e.is_dir():
-                        subdirs.append(e.path)
+                        if not scanner._EXCLUDE_DIR_RE.match(e.name):
+                            subdirs.append(e.path)
                     elif e.is_file():
                         files.append((e.name, e.stat().st_size))
                 except OSError:
