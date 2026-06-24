@@ -336,19 +336,28 @@ def build_date_name(stem: str, ext: str, show: str, airdate: str) -> str:
 # ---------------------------------------------------------------------------
 
 _SEASON_FOLDER_RE = re.compile(r"^(?:season|series)\b|^s\d{1,2}$|^specials$", re.IGNORECASE)
+# Library/container folders that are NOT a show — the show is the folder INSIDE
+# them. Prevents lumping every show under "TV Shows" when scanning from above the
+# library (e.g. scanning "P:\" instead of "P:\TV Shows").
+# Specific enough not to match real show titles ("Show Me a Hero", "Movie 43").
+_LIBRARY_FOLDER_RE = re.compile(r"^(?:tv[ ._-]?shows|movies|anime)\b", re.IGNORECASE)
 
 
 def _show_name(root: str, dirpath: str) -> str:
     """Series name, robust to how deep you scan.
 
-    The series folder is the one directly above a "Season N" / "S0N" / "Specials"
-    folder. We look at the file's ABSOLUTE path so this works whether you scan the
-    library root, a single show, or even a season folder directly. Falls back to
-    the first component under the scan root when there's no season folder."""
+    Priority: (1) the folder directly above a "Season N" / "S0N" / "Specials"
+    folder; (2) the folder directly inside a library container ("TV Shows",
+    "Movies", …); (3) the first folder under the scan root. Uses the file's
+    ABSOLUTE path so it works whether you scan the library root, a single show,
+    a season folder, or even the whole drive."""
     parts = os.path.normpath(os.path.abspath(dirpath)).split(os.sep)
     for i, part in enumerate(parts):
         if _SEASON_FOLDER_RE.match(part) and i > 0:
             return parts[i - 1]
+    for i, part in enumerate(parts[:-1]):
+        if _LIBRARY_FOLDER_RE.match(part):
+            return parts[i + 1]
     rel = os.path.relpath(dirpath, root)
     if rel == ".":
         return os.path.basename(os.path.abspath(root))

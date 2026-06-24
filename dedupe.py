@@ -146,8 +146,7 @@ def find_duplicates(roots: list[str], *, cross_drive_only: bool = True) -> list[
         drive = _drive_of(root)
         for dirpath, _dirs, entries in _walk_scandir(root):
             parent = os.path.basename(dirpath)
-            rel = os.path.relpath(dirpath, root)
-            show = rel.split(os.sep)[0] if rel != "." else os.path.basename(root)
+            show = scanner._show_name(root, dirpath)   # robust to scan depth
             for fname, size in entries:
                 stem, ext = os.path.splitext(fname)
                 if ext.lower() not in scanner.VIDEO_EXTS:

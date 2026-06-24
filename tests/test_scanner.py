@@ -86,6 +86,23 @@ def test_quality_tag_not_parsed_as_code():
     assert r["kind"] is Kind.NONE  # season pack, no episode -> undetermined
 
 
+def test_show_name_robust_to_scan_depth(tmp_path):
+    # the bug: scanning above the library lumped no-season shows under "TV Shows"
+    f = tmp_path / "P" / "TV Shows" / "A Perfect Planet"
+    f.mkdir(parents=True)
+    assert scanner._show_name(str(tmp_path / "P"), str(f)) == "A Perfect Planet"
+    assert scanner._show_name(str(tmp_path / "P" / "TV Shows"), str(f)) == "A Perfect Planet"
+    # season folder still wins
+    s = tmp_path / "P" / "TV Shows" / "Dateline NBC" / "Season 30"
+    s.mkdir(parents=True)
+    assert scanner._show_name(str(tmp_path / "P"), str(s)) == "Dateline NBC"
+
+
+def test_show_name_does_not_treat_show_titled_like_library_as_container():
+    # "Show Me a Hero" must not be read as a "Shows" library folder
+    assert scanner._show_name("P:/TV Shows", "P:/TV Shows/Show Me a Hero/Season 1") == "Show Me a Hero"
+
+
 def test_separator_SE_is_plex_ok_and_left_alone(tmp_path):
     # "S02.E04" and "S02 E04" are Plex-readable, so don't churn them
     d = tmp_path / "Gangland (2007)" / "Season 2"
