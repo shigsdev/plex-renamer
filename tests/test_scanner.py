@@ -153,6 +153,34 @@ def test_daily_file_resolved_to_episode_strips_the_date():
     assert "The Real Thing About Pam" in name
 
 
+def test_multi_episode_bare_e_range():
+    # the reported bug: "e01-02" is a combined two-episode file -> S01E01E02
+    r = p("lois.and.clark.e01-02.pilot.ntsc.dvd.dd2.0.x264hi10-lightspeed", parent="Season 1")
+    assert (r["season"], r["episode"], r["episode_end"]) == (1, 1, 2)
+    name = scanner.build_episode_name(
+        "lois.and.clark.e01-02.pilot.ntsc.dvd.dd2.0.x264hi10-lightspeed", ".mkv", 1, 1, 2)
+    assert name == "lois and clark pilot - S01E01E02.mkv"
+
+
+def test_multi_episode_nxnn_range():
+    for stem in ("show.1x01-02.title", "show.1x01-1x02.title"):
+        r = p(stem)
+        assert (r["episode"], r["episode_end"]) == (1, 2)
+        assert "S01E01E02" in scanner.build_episode_name(stem, ".mkv", 1, 1, 2)
+
+
+def test_three_episode_range():
+    name = scanner.build_episode_name("show.e01-03.title", ".mkv", 1, 1, 3)
+    assert name == "show title - S01E01E02E03.mkv"
+
+
+def test_single_episode_not_read_as_range():
+    # "e05" followed by "1080p" must stay single (the hyphen guard)
+    r = p("show.e05.1080p.x264-grp", parent="Season 2")
+    assert r["episode"] == 5
+    assert r.get("episode_end") is None
+
+
 def test_bare_e_episode_not_codec():
     # "e001" is the episode; "x264hi10" must NOT leak "264" as S02E64
     r = p("he-man.e001.diamond.ray.of.disappearance.ntsc.dvd.dd2.0.x264hi10-lightspeed",

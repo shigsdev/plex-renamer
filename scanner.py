@@ -107,6 +107,7 @@ class Proposal:
     confidence: str = Confidence.NONE.value
     season: int | None = None
     episode: int | None = None
+    episode_end: int | None = None  # for multi-episode files -> S01E01E02
     airdate: str | None = None      # YYYY-MM-DD for daily shows
     absolute: int | None = None     # absolute episode number to resolve via API
     note: str = ""
@@ -172,6 +173,19 @@ def _strip_release_junk(text: str) -> str:
 # Parsing — returns a partly-filled Proposal (kind/conf/season/episode/airdate/note)
 # ---------------------------------------------------------------------------
 
+def _range_end(stem: str, after_idx: int, ep_start: int) -> int | None:
+    """If a multi-episode range follows the matched episode (e.g. "e01-02",
+    "1x01-1x02", "E01-E02"), return the END episode number; else None. Requires a
+    hyphen (or a second "eNN"), so a trailing quality token like ".1080p" after
+    "e05" is NOT read as a range."""
+    m = re.match(r"[ ._-]*(?:-[ ._-]*(?:e|ep|\d{1,2}[xX])?|e)[ ._-]*(\d{1,3})\b",
+                 stem[after_idx:], re.IGNORECASE)
+    if not m:
+        return None
+    end = int(m.group(1))
+    return end if ep_start < end <= ep_start + 8 else None   # sane span only
+
+
 def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> dict:
     """Return a dict of parse results for a filename stem (no I/O)."""
     folder_season = forced_season if forced_season is not None else season_from_folder(parent)
@@ -200,12 +214,17 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
         return dict(kind=Kind.DATE, confidence=Confidence.HIGH, airdate=airdate,
                     needs_lookup=True, note=f"air date {airdate} (daily show)")
 
-    # 3. "1x05" / "01x05"
+    # 3. "1x05" / "01x05" (and multi "1x01-02" / "1x01-1x02")
     m = re.search(r"(?<!\d)(\d{1,2})\s*[xX]\s*(\d{1,3})(?!\d)", stem)
     if m:
-        return dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
-                    season=int(m.group(1)), episode=int(m.group(2)),
-                    note=f"matched {m.group(0)!r}")
+        ep = int(m.group(2))
+        end = _range_end(stem, m.end(), ep)
+        d = dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
+                 season=int(m.group(1)), episode=ep, note=f"matched {m.group(0)!r}")
+        if end:
+            d["episode_end"] = end
+            d["note"] += f" (multi-episode, ends E{end:02d})"
+        return d
 
     # 4. "S01.E01" / "S01 E02" / "S01 EP01" (separator between S and E).
     m = re.search(r"[Ss](\d{1,2})[ ._-]+E[Pp]?[ ._-]*(\d{1,3})(?!\d)", stem)
@@ -231,16 +250,25 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
         or re.search(r"\be(\d{1,3})(?!\d)", stem, re.IGNORECASE)
     if m:
         n = int(m.group(1))
+        end = _range_end(stem, m.end(), n)   # multi: "e01-02", "EP01-02"
         if folder_season is not None:
-            return dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
-                        season=folder_season, episode=n,
-                        note=f"ep {n} from name, season {folder_season} from folder")
-        # No season folder: the number may be ABSOLUTE (e.g. DVD "episode 61").
-        # Provisionally S01E{n}, but flag it for a metadata lookup that can remap
-        # the absolute number to the real season/episode.
-        return dict(kind=Kind.EPISODE, confidence=Confidence.MEDIUM,
-                    season=1, episode=n, absolute=n, needs_lookup=True,
-                    note=f"ep {n} from name, season 1 assumed — absolute # (look up to confirm)")
+            d = dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
+                     season=folder_season, episode=n,
+                     note=f"ep {n} from name, season {folder_season} from folder")
+        elif end is not None:
+            # explicit multi range -> not an absolute-number candidate
+            d = dict(kind=Kind.EPISODE, confidence=Confidence.MEDIUM,
+                     season=1, episode=n,
+                     note=f"eps {n}-{end} from name, season 1 assumed")
+        else:
+            # No season folder: the number may be ABSOLUTE (e.g. DVD "episode 61").
+            # Provisionally S01E{n}, flagged for a lookup that can remap it.
+            d = dict(kind=Kind.EPISODE, confidence=Confidence.MEDIUM,
+                     season=1, episode=n, absolute=n, needs_lookup=True,
+                     note=f"ep {n} from name, season 1 assumed — absolute # (look up to confirm)")
+        if end is not None:
+            d["episode_end"] = end
+        return d
 
     # 7. "Part 3" with season from folder (miniseries default season 1).
     m = re.search(r"\bpart[ ._-]*(\d{1,3})\b", stem, re.IGNORECASE)
@@ -293,12 +321,22 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
 # New-name construction
 # ---------------------------------------------------------------------------
 
-def build_episode_name(stem: str, ext: str, season: int, episode: int) -> str:
-    """Insert a canonical S##E## while preserving the title text."""
-    token = f"S{season:02d}E{episode:02d}"
+def build_episode_name(stem: str, ext: str, season: int, episode: int,
+                       episode_end: int | None = None) -> str:
+    """Insert a canonical S##E## while preserving the title text. For a
+    multi-episode file (``episode_end``), emit S01E01E02… which Plex reads as one
+    file covering several episodes."""
+    if episode_end and episode < episode_end:
+        token = f"S{season:02d}" + "".join(f"E{e:02d}" for e in range(episode, episode_end + 1))
+    else:
+        token = f"S{season:02d}E{episode:02d}"
     cleaned = stem
     # Drop an air-date (daily-show file resolved to an episode) — it's not title text.
     cleaned = _DATE_RE.sub(" ", cleaned)
+    # Remove multi-episode range markers ("e01-02", "1x01-1x02", "ep07-08") whole.
+    cleaned = re.sub(r"(?<!\d)\d{1,2}\s*[xX]\s*\d{1,3}[ ._-]*-[ ._-]*(?:\d{1,2}[xX])?\d{1,3}", " ", cleaned)
+    cleaned = re.sub(r"\b(?:episode|ep|e)[ ._-]*\d{1,3}[ ._-]*-[ ._-]*(?:episode|ep|e)?[ ._-]*\d{1,3}",
+                     " ", cleaned, flags=re.IGNORECASE)
     # Remove the source token(s) we interpreted, so we don't leave a duplicate.
     cleaned = re.sub(r"(?<!\d)\d{1,2}\s*[xX]\s*\d{1,3}(?!\d)", " ", cleaned)
     cleaned = re.sub(r"[Ss]\d{1,2}[ ._-]+E[Pp]?[ ._-]*\d{1,3}", " ", cleaned)
@@ -404,11 +442,13 @@ def scan(root: str, *, forced_season: int | None = None,
             p = Proposal(full, show, rel_dir, fname,
                          kind=r["kind"].value, confidence=r["confidence"].value,
                          season=r.get("season"), episode=r.get("episode"),
+                         episode_end=r.get("episode_end"),
                          airdate=r.get("airdate"), absolute=r.get("absolute"),
                          note=r["note"], needs_lookup=r.get("needs_lookup", False))
 
             if r["kind"] is Kind.EPISODE:
-                p.new_name = build_episode_name(stem, ext, r["season"], r["episode"])
+                p.new_name = build_episode_name(stem, ext, r["season"], r["episode"],
+                                                r.get("episode_end"))
             elif r["kind"] is Kind.DATE:
                 p.new_name = build_date_name(stem, ext, show, r["airdate"])
             # SKIP_EXTRA / NONE keep new_name = None (left alone).
