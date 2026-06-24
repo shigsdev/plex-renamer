@@ -110,6 +110,17 @@ def test_year_kept_in_built_title():
     assert name == "Iron Man 1994 - S01E01.mkv"
 
 
+def test_daily_file_resolved_to_episode_strips_the_date():
+    # when a daily-show file is matched to an episode via lookup, the air-date
+    # must not linger in the title
+    name = scanner.build_episode_name(
+        "Dateline.NBC.2022.04.15.The.Real.Thing.About.Pam.1080p.WEB.h264-DiRT", ".mkv", 30, 22)
+    assert "2022" not in name
+    assert "04 15" not in name and "04.15" not in name
+    assert name.endswith("- S30E22.mkv")
+    assert "The Real Thing About Pam" in name
+
+
 def test_wxh_resolution_not_parsed_as_episode():
     # "1920x1080" is a resolution — must NOT become S19E20 (the A Football Life bug)
     r = p("Some Show Name (1920x1080)", parent="Season 4")

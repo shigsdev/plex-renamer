@@ -283,6 +283,8 @@ def build_episode_name(stem: str, ext: str, season: int, episode: int) -> str:
     """Insert a canonical S##E## while preserving the title text."""
     token = f"S{season:02d}E{episode:02d}"
     cleaned = stem
+    # Drop an air-date (daily-show file resolved to an episode) — it's not title text.
+    cleaned = _DATE_RE.sub(" ", cleaned)
     # Remove the source token(s) we interpreted, so we don't leave a duplicate.
     cleaned = re.sub(r"(?<!\d)\d{1,2}\s*[xX]\s*\d{1,3}(?!\d)", " ", cleaned)
     cleaned = re.sub(r"[Ss]\d{1,2}[ ._-]+E[Pp]?[ ._-]*\d{1,3}", " ", cleaned)
@@ -318,11 +320,23 @@ def build_date_name(stem: str, ext: str, show: str, airdate: str) -> str:
 # Scan
 # ---------------------------------------------------------------------------
 
+_SEASON_FOLDER_RE = re.compile(r"^(?:season|series)\b|^s\d{1,2}$|^specials$", re.IGNORECASE)
+
+
 def _show_name(root: str, dirpath: str) -> str:
-    """Series name = first path component under the scan root."""
+    """Series name, robust to how deep you scan.
+
+    The series folder is the one directly above a "Season N" / "S0N" / "Specials"
+    folder. We look at the file's ABSOLUTE path so this works whether you scan the
+    library root, a single show, or even a season folder directly. Falls back to
+    the first component under the scan root when there's no season folder."""
+    parts = os.path.normpath(os.path.abspath(dirpath)).split(os.sep)
+    for i, part in enumerate(parts):
+        if _SEASON_FOLDER_RE.match(part) and i > 0:
+            return parts[i - 1]
     rel = os.path.relpath(dirpath, root)
     if rel == ".":
-        return os.path.basename(root)
+        return os.path.basename(os.path.abspath(root))
     return rel.split(os.sep)[0]
 
 
