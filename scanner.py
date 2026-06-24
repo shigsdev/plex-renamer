@@ -49,9 +49,9 @@ _YEAR = r"\b(?:19|20)\d{2}\b"
 _JUNK_PATTERNS = [
     r"\b\d{3,4}\s*[xX]\s*\d{3,4}\b",      # WxH resolution: 1920x1080, 1280x720
     r"\b\d{3,4}p\b",                      # 480p 720p 1080p 2160p
-    r"\b(?:x|h)[ ._-]?26[45]\b",          # x264 x265 h264 h265 h 264
+    r"\b(?:x|h)[ ._-]?26[45](?:hi10|10bit)?\b",  # x264, x265, h264, x264hi10
     r"\bhevc\b", r"\bavc\b", r"\bxvid\b", r"\bdivx\b",
-    r"\b10bit\b", r"\b8bit\b", r"\bhi10p\b",
+    r"\b10bit\b", r"\b8bit\b", r"\bhi10p?\b",
     r"\bdd[p]?[ ._-]?\d(?:[ ._-]?\d)?\b",  # dd5.1 ddp5.1 dd2.0
     r"\bdts(?:[ ._-]?hd)?\b", r"\btruehd\b", r"\batmos\b", r"\baac\d?\b",
     r"\bac3\b", r"\bflac\b", r"\bmp3\b",
@@ -215,10 +215,14 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
                     season=int(m.group(1)), episode=int(m.group(2)),
                     note=f"matched {m.group(0)!r}")
 
-    # 6. "Episode 5" / "EP05" / "Ep 5". Season from folder if known, else
-    # default to 1 (miniseries/docs like "A.Perfect.Planet.EP01" have no
-    # season folder) — marked MEDIUM since the season is assumed.
-    m = re.search(r"(?:episode|ep)[ _.-]*(\d{1,3})(?!\d)", stem, re.IGNORECASE)
+    # 6. "Episode 5" / "EP05" / "Ep 5" / bare "e001" (e directly before digits).
+    # Season from folder if known, else default to 1 (miniseries/docs like
+    # "A.Perfect.Planet.EP01" or "he-man.e001" have no season folder) — MEDIUM
+    # when the season is assumed. The bare-"e" form requires a word boundary
+    # before it (so "he-man" / "Se7en" don't match) and digits directly after.
+    m = re.search(r"\bepisode[ ._-]*(\d{1,3})(?!\d)", stem, re.IGNORECASE) \
+        or re.search(r"\bep[ ._-]*(\d{1,3})(?!\d)", stem, re.IGNORECASE) \
+        or re.search(r"\be(\d{1,3})(?!\d)", stem, re.IGNORECASE)
     if m:
         if folder_season is not None:
             return dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
@@ -290,6 +294,7 @@ def build_episode_name(stem: str, ext: str, season: int, episode: int) -> str:
     cleaned = re.sub(r"[Ss]\d{1,2}[ ._-]+E[Pp]?[ ._-]*\d{1,3}", " ", cleaned)
     cleaned = re.sub(r"season[ _.-]*\d{1,2}.*?(?:episode|ep)[ _.-]*\d{1,3}", " ", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"(?:episode|ep)[ _.-]*\d{1,3}(?!\d)", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\be\d{1,3}(?!\d)", " ", cleaned, flags=re.IGNORECASE)  # bare "e001"
     cleaned = re.sub(r"\bpart[ ._-]*\d{1,3}\b", " ", cleaned, flags=re.IGNORECASE)
     # Drop a leading episode number we interpreted (e.g. "01 Title" -> "Title").
     cleaned = re.sub(rf"^\s*0*{episode}[ ._-]+", " ", cleaned)

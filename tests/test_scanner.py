@@ -121,6 +121,23 @@ def test_daily_file_resolved_to_episode_strips_the_date():
     assert "The Real Thing About Pam" in name
 
 
+def test_bare_e_episode_not_codec():
+    # "e001" is the episode; "x264hi10" must NOT leak "264" as S02E64
+    r = p("he-man.e001.diamond.ray.of.disappearance.ntsc.dvd.dd2.0.x264hi10-lightspeed",
+          parent="Season 1", show="He-Man")
+    assert (r["season"], r["episode"]) == (1, 1)
+    name = scanner.build_episode_name(
+        "he-man.e001.diamond.ray.of.disappearance.ntsc.dvd.dd2.0.x264hi10-lightspeed", ".mkv", 1, 1)
+    assert "264" not in name
+    assert name.endswith("- S01E01.mkv")
+
+
+def test_bare_e_does_not_overmatch_show_titles():
+    # word-boundary guard: "Se7en" / embedded e+digit must not be read as an episode
+    assert p("Se7en bonus content", parent="Season 1")["kind"] is not Kind.EPISODE or \
+        p("Se7en bonus content", parent="Season 1")["episode"] != 7
+
+
 def test_wxh_resolution_not_parsed_as_episode():
     # "1920x1080" is a resolution — must NOT become S19E20 (the A Football Life bug)
     r = p("Some Show Name (1920x1080)", parent="Season 4")
