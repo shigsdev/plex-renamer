@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plex Renamer — Activity Log</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Activity Log
+      <span class="nav"><a href="/">← renamer</a> · <a href="/dedupe">duplicate cleanup</a></span>
+    </h1>
+    <p class="sub">Every rename batch and quarantine removal, newest first. Expand a batch to see
+      the individual files.</p>
+  </header>
+
+  <section class="bar">
+    <button id="refresh">Refresh</button>
+    <span id="status" class="status"></span>
+  </section>
+
+  <section id="summary" class="summary"></section>
+  <section id="results"></section>
+
+  <script src="{{ url_for('static', filename='logs.js') }}"></script>
+</body>
+</html>

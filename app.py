@@ -24,6 +24,7 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 
 import apply as apply_mod
 import dedupe
+import logs as logs_mod
 import metadata
 import quarantine
 import scanner
@@ -40,6 +41,16 @@ def index():
 @app.get("/dedupe")
 def dedupe_page():
     return render_template("dedupe.html", quarantine=quarantine.quarantine_stats())
+
+
+@app.get("/logs")
+def logs_page():
+    return render_template("logs.html")
+
+
+@app.get("/api/logs")
+def api_logs():
+    return jsonify(logs_mod.read_logs())
 
 
 def _parse_dirs(raw: str) -> list[str]:
