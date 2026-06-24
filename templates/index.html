@@ -23,6 +23,15 @@
     <span id="status" class="status"></span>
   </section>
 
+  {% if has_key %}
+  <p class="metastatus ok">Daily-show episode lookup: <strong>{{ provider | upper }}</strong> enabled —
+    use “Look up daily episode #s” after a scan, or the 🔍 button on a date row.</p>
+  {% else %}
+  <p class="metastatus warnline">Daily shows (Dateline, etc.) are named by air date. To match them to a
+    real <code>S##E##</code>, add a TheTVDB or TMDB API key to a <code>.env</code> file (see
+    <code>.env.example</code>) and restart. Episode lookup is currently <strong>disabled</strong>.</p>
+  {% endif %}
+
   <section id="summary" class="summary hidden"></section>
 
   <section id="controls" class="controls hidden">
@@ -31,6 +40,7 @@
     <button data-approve="medium">+ medium</button>
     <button data-approve="all">Approve all renamable</button>
     <button data-approve="none" class="ghost">Clear all</button>
+    {% if has_key %}<button id="lookupAll">🔍 Look up daily episode #s (<span id="dateCount">0</span>)</button>{% endif %}
     <span class="spacer"></span>
     <label><input type="checkbox" id="hideSkipped" checked> hide extras / undetermined</label>
     <button id="apply" class="primary">Apply approved (<span id="approvedCount">0</span>)</button>

@@ -117,6 +117,19 @@ def test_lookup_without_key_returns_400(client, monkeypatch):
     assert r.status_code == 400
 
 
+def test_lookup_success_returns_episode_name(client, monkeypatch):
+    monkeypatch.setattr(appmod.metadata, "have_key", lambda: True)
+    monkeypatch.setattr(appmod.metadata, "lookup_by_airdate",
+                        lambda show, airdate: {"season": 25, "episode": 7, "provider": "tvdb"})
+    r = client.post("/api/lookup", json={
+        "show": "Dateline NBC", "airdate": "2016-11-04",
+        "path": "P:/TV/Dateline NBC/Dateline.NBC.2016.11.04.The.Good.Husband.mkv"})
+    data = r.get_json()
+    assert data["found"] is True
+    assert (data["season"], data["episode"]) == (25, 7)
+    assert "S25E07" in data["new_name"]
+
+
 # ---- page render ----------------------------------------------------------
 
 def test_index_renders(client):

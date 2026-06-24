@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 
+from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 import apply as apply_mod
@@ -28,6 +29,10 @@ import logs as logs_mod
 import metadata
 import quarantine
 import scanner
+
+# Load API keys (TVDB_API_KEY / TMDB_API_KEY / METADATA_PROVIDER) from a local
+# .env file so they don't have to be set as Windows env vars. .env is gitignored.
+load_dotenv()
 
 app = Flask(__name__)
 

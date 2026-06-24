@@ -122,6 +122,28 @@ function renderRows() {
     container.appendChild(details);
   }
   updateApproved();
+  const dc = $("#dateCount");
+  if (dc) dc.textContent = ROWS.filter((r) => r.kind === "date").length;
+}
+
+/* ---- bulk daily-show episode lookup (TVDB/TMDB) ---- */
+async function lookupAllDates() {
+  const dates = ROWS.filter((r) => r.kind === "date");
+  if (!dates.length) { setStatus("No daily-show (date) rows to look up."); return; }
+  const btn = $("#lookupAll");
+  if (btn) btn.disabled = true;
+  let found = 0;
+  for (let i = 0; i < dates.length; i++) {
+    const r = dates[i];
+    setStatus(`Looking up episode numbers… ${i + 1}/${dates.length}`, true);
+    try {
+      const { data } = await postJSON("/api/lookup", { show: r.show, airdate: r.airdate, path: r.path });
+      if (data.found) { r.new_name = data.new_name; found++; }
+    } catch { /* keep going */ }
+  }
+  if (btn) btn.disabled = false;
+  setStatus(`Episode lookup: matched ${found} of ${dates.length} daily file(s).`);
+  renderRows();
 }
 
 function syncGroupCheckbox(cb, changedRows) {
@@ -196,6 +218,7 @@ document.querySelectorAll("[data-approve]").forEach((btn) => {
 });
 
 $("#hideSkipped").addEventListener("change", renderRows);
+$("#lookupAll")?.addEventListener("click", lookupAllDates);
 
 function updateApproved() {
   $("#approvedCount").textContent = ROWS.filter((r) => r.changed && r._approved).length;

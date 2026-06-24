@@ -58,14 +58,30 @@ keywords is left alone so it can't collide with a real `S01E01`. (Exception: if
 the *show's own name* contains the keyword, e.g. *The Making of the Mob*, it's
 treated as a real episode.)
 
-## Daily shows + TMDB lookup
+## Daily shows + episode lookup (TheTVDB / TMDB)
 
 Shows like Dateline carry an air date but no episode number. By default these
 are renamed to Plex's daily format — `Dateline NBC - 2016-09-09 - Title` — which
-Plex matches by air date. If you set a free **TMDB** API key
-(https://www.themoviedb.org/settings/api, v3 key), each daily row in the UI gets
-a **🔍 ep #** button that looks up the real `S##E##` by matching the air date and
-rewrites the proposal.
+Plex matches by air date.
+
+To match them to a real `S##E##` instead, add an API key. **Copy `.env.example`
+to `.env`** and fill in one of:
+
+- **TheTVDB** (what Plex uses; matches Plex's numbering):
+  `METADATA_PROVIDER=tvdb` + `TVDB_API_KEY=...` (+ `TVDB_PIN=...` if it's a
+  user-subscription key). Key: https://thetvdb.com/dashboard/account/apikey
+- **TMDB** (easiest free key): `TMDB_API_KEY=...`. Key:
+  https://www.themoviedb.org/settings/api
+
+`.env` is gitignored, so your key stays local. **Restart the app** after editing it.
+
+Once a key is set, the renamer shows a **"Daily-show episode lookup: … enabled"**
+banner, and you get two ways to resolve dates to episodes:
+- **"🔍 Look up daily episode #s"** — a bulk button that resolves every daily row
+  at once (the lookup caches each show's air-date map, so it's fast).
+- a per-row **🔍 ep #** button.
+
+With no key set, a banner tells you the feature is disabled and how to enable it.
 
 ## Command line (optional)
 

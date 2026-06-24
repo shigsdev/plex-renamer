@@ -175,21 +175,31 @@ def _tvdb_show_id(name: str) -> int | None:
         return None
 
 
+@lru_cache(maxsize=32)
+def _tvdb_airdate_map(show_id: int) -> dict:
+    """Build {airdate: (season, episode)} for a series ONCE (paged), so repeated
+    air-date lookups for the same show are O(1) instead of re-fetching every page."""
+    out: dict[str, tuple[int, int]] = {}
+    url = f"/series/{show_id}/episodes/default?page=0"
+    for _ in range(50):  # hard page cap
+        data = _tvdb_get(url)
+        if not data:
+            break
+        for ep in data.get("data", {}).get("episodes", []):
+            if ep.get("aired"):
+                out.setdefault(ep["aired"], (ep.get("seasonNumber"), ep.get("number")))
+        nxt = data.get("links", {}).get("next")
+        if not nxt:
+            break
+        url = nxt
+    return out
+
+
 def _tvdb_lookup_by_airdate(show_name: str, airdate: str) -> dict | None:
     show_id = _tvdb_show_id(show_name)
     if not show_id:
         return None
-    url = f"/series/{show_id}/episodes/default?page=0"
-    for _ in range(50):  # hard page cap, just in case
-        data = _tvdb_get(url)
-        if not data:
-            return None
-        for ep in data.get("data", {}).get("episodes", []):
-            if ep.get("aired") == airdate:
-                return {"season": ep.get("seasonNumber"), "episode": ep.get("number"),
-                        "provider": "tvdb"}
-        nxt = data.get("links", {}).get("next")
-        if not nxt:
-            return None
-        url = nxt
-    return None
+    se = _tvdb_airdate_map(show_id).get(airdate)
+    if not se:
+        return None
+    return {"season": se[0], "episode": se[1], "provider": "tvdb"}

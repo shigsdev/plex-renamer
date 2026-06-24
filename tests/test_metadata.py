@@ -10,7 +10,7 @@ import metadata  # noqa: E402
 
 def _clear_caches():
     for fn in (metadata._tmdb_show_id, metadata._tmdb_num_seasons, metadata._tmdb_season,
-               metadata._tvdb_show_id):
+               metadata._tvdb_show_id, metadata._tvdb_airdate_map):
         fn.cache_clear()
     metadata._tvdb_token = None
 
