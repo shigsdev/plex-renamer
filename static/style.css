@@ -58,6 +58,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #results { padding: 0 24px 60px; }
 details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
 summary { padding: 10px 14px; cursor: pointer; font-size: 15px; }
+summary .groupcheck { margin-right: 9px; vertical-align: middle; cursor: pointer; }
 .muted { color: var(--muted); font-weight: 400; }
 
 table { width: 100%; border-collapse: collapse; }

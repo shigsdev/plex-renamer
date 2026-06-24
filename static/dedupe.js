@@ -74,8 +74,18 @@ function renderGroups() {
     byShow.get(g.show).push(g);
   }
   for (const [show, groups] of [...byShow.entries()].sort()) {
+    const groupCb = h("input", { type: "checkbox", class: "groupcheck", title: "Approve all episodes for this show" });
+    const approved = groups.filter((g) => g._approved).length;
+    groupCb.checked = approved === groups.length;
+    groupCb.indeterminate = approved > 0 && approved < groups.length;
+    groupCb.addEventListener("click", (e) => e.stopPropagation());
+    groupCb.addEventListener("change", () => {
+      for (const g of groups) { g._keep = g.suggested_keep; g._approved = groupCb.checked; }
+      renderGroups();
+    });
     const details = h("details", { open: "" }, [
       h("summary", {}, [
+        groupCb,
         h("strong", { text: show }),
         h("span", { class: "muted", text: ` ${groups.length} duplicated episode(s) · ${groups[0].library}` }),
       ]),

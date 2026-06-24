@@ -80,11 +80,21 @@ function renderRows() {
   }
 
   for (const [show, rows] of [...groups.entries()].sort()) {
-    const renamable = rows.filter((r) => r.changed).length;
+    const changedRows = rows.filter((r) => r.changed);
+    const groupCb = h("input", { type: "checkbox", class: "groupcheck", title: "Select all in this show" });
+    groupCb.disabled = changedRows.length === 0;
+    syncGroupCheckbox(groupCb, changedRows);
+    // clicking the checkbox in a <summary> must not toggle the disclosure
+    groupCb.addEventListener("click", (e) => e.stopPropagation());
+    groupCb.addEventListener("change", () => {
+      for (const r of changedRows) r._approved = groupCb.checked;
+      renderRows();
+    });
     const details = h("details", { open: "" }, [
       h("summary", {}, [
+        groupCb,
         h("strong", { text: show }),
-        h("span", { class: "muted", text: ` ${renamable} change(s), ${rows.length} shown` }),
+        h("span", { class: "muted", text: ` ${changedRows.length} change(s), ${rows.length} shown` }),
       ]),
     ]);
 
@@ -98,6 +108,12 @@ function renderRows() {
     container.appendChild(details);
   }
   updateApproved();
+}
+
+function syncGroupCheckbox(cb, changedRows) {
+  const approved = changedRows.filter((r) => r._approved).length;
+  cb.checked = changedRows.length > 0 && approved === changedRows.length;
+  cb.indeterminate = approved > 0 && approved < changedRows.length;
 }
 
 function buildRow(row) {
