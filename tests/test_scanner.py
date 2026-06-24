@@ -110,8 +110,9 @@ def test_leading_year_is_not_an_episode():
 
 
 def test_build_name_strips_leading_number_and_resolution():
+    # leading "04" matches the episode, so it is stripped from the title
     name = scanner.build_episode_name(
-        "01 A Football Life Kurt Warner (1920x1080) [Phr0stY] ", ".mkv", 1, 4)
+        "04 A Football Life Kurt Warner (1920x1080) [Phr0stY] ", ".mkv", 1, 4)
     assert "1920x1080" not in name
     assert "[Phr0stY]" not in name
     assert "( )" not in name and "()" not in name
