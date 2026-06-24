@@ -10,7 +10,7 @@ import metadata  # noqa: E402
 
 def _clear_caches():
     for fn in (metadata._tmdb_show_id, metadata._tmdb_num_seasons, metadata._tmdb_season,
-               metadata._tvdb_show_id, metadata._tvdb_airdate_map):
+               metadata._tvdb_show_id, metadata._tvdb_episode_index):
         fn.cache_clear()
     metadata._tvdb_token = None
 
@@ -80,3 +80,30 @@ def test_tvdb_airdate_match_with_pagination(monkeypatch):
     monkeypatch.setattr(metadata, "_tvdb_get", fake_get)
     hit = metadata.lookup_by_airdate("Dateline NBC", "2016-09-09")
     assert hit == {"season": 21, "episode": 57, "provider": "tvdb"}
+
+
+def test_tvdb_absolute_match(monkeypatch):
+    _clear_caches()
+    monkeypatch.setenv("METADATA_PROVIDER", "tvdb")
+    monkeypatch.setenv("TVDB_API_KEY", "x")
+    metadata._tvdb_token = "tok"
+
+    pages = {
+        "/series/77/episodes/default?page=0": {
+            "data": {"episodes": [
+                {"absoluteNumber": 25, "seasonNumber": 1, "number": 18},
+                {"absoluteNumber": 61, "seasonNumber": 2, "number": 11},
+            ]},
+            "links": {"next": None},
+        },
+    }
+
+    def fake_get(path):
+        if path.startswith("/search"):
+            return {"data": [{"tvdb_id": 77}]}
+        return pages.get(path)
+
+    monkeypatch.setattr(metadata, "_tvdb_get", fake_get)
+    assert metadata.lookup_by_absolute("Garfield and Friends", 61) == \
+        {"season": 2, "episode": 11, "provider": "tvdb"}
+    assert metadata.lookup_by_absolute("Garfield and Friends", 99) is None

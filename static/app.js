@@ -52,8 +52,8 @@ $("#scan").addEventListener("click", async () => {
   setStatus(`Scanned ${data.rows.length} files needing attention.`);
   $("#summary").classList.remove("hidden");
   $("#controls").classList.remove("hidden");
-  // Automatically resolve daily-show air dates to S##E## when a key is set.
-  if (window.HAS_KEY && ROWS.some((r) => r.kind === "date")) {
+  // Automatically resolve air dates + absolute episode numbers when a key is set.
+  if (window.HAS_KEY && ROWS.some((r) => r.needs_lookup)) {
     await lookupAllDates();
   }
 });
@@ -127,26 +127,28 @@ function renderRows() {
   }
   updateApproved();
   const dc = $("#dateCount");
-  if (dc) dc.textContent = ROWS.filter((r) => r.kind === "date").length;
+  if (dc) dc.textContent = ROWS.filter((r) => r.needs_lookup).length;
 }
 
-/* ---- bulk daily-show episode lookup (TVDB/TMDB) ---- */
+/* ---- metadata lookup (TVDB/TMDB): air-date for daily shows, absolute # for
+   "episode N" files without a season. Runs automatically after each scan. ---- */
 async function lookupAllDates() {
-  const dates = ROWS.filter((r) => r.kind === "date");
-  if (!dates.length) { setStatus("No daily-show (date) rows to look up."); return; }
+  const rows = ROWS.filter((r) => r.needs_lookup);
+  if (!rows.length) { setStatus("Nothing needs an episode lookup."); return; }
   const btn = $("#lookupAll");
   if (btn) btn.disabled = true;
   let found = 0;
-  for (let i = 0; i < dates.length; i++) {
-    const r = dates[i];
-    setStatus(`Looking up episode numbers… ${i + 1}/${dates.length}`, true);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    setStatus(`Looking up episode numbers… ${i + 1}/${rows.length}`, true);
     try {
-      const { data } = await postJSON("/api/lookup", { show: r.show, airdate: r.airdate, path: r.path });
-      if (data.found) { r.new_name = data.new_name; found++; }
+      const { data } = await postJSON("/api/lookup",
+        { show: r.show, airdate: r.airdate, absolute: r.absolute, path: r.path });
+      if (data.found) { r.new_name = data.new_name; r._looked = true; found++; }
     } catch { /* keep going */ }
   }
   if (btn) btn.disabled = false;
-  setStatus(`Episode lookup: matched ${found} of ${dates.length} daily file(s).`);
+  setStatus(`Episode lookup: matched ${found} of ${rows.length} file(s).`);
   renderRows();
 }
 

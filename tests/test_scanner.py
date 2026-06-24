@@ -132,6 +132,22 @@ def test_bare_e_episode_not_codec():
     assert name.endswith("- S01E01.mkv")
 
 
+def test_episode_without_season_is_absolute_candidate():
+    # "episode_61" with no season folder -> provisional S01E61, flagged for an
+    # absolute-number lookup
+    r = p("garfield_and_friends.vol3.episode_61.dvdrip_xvid-fov",
+          parent="Garfield and Friends", show="Garfield and Friends")
+    assert (r["season"], r["episode"]) == (1, 61)
+    assert r["absolute"] == 61
+    assert r["needs_lookup"] is True
+
+
+def test_episode_with_season_folder_is_not_absolute_candidate():
+    r = p("show.episode.4", parent="Season 2", show="Show")
+    assert (r["season"], r["episode"]) == (2, 4)
+    assert not r.get("needs_lookup")
+
+
 def test_bare_e_does_not_overmatch_show_titles():
     # word-boundary guard: "Se7en" / embedded e+digit must not be read as an episode
     assert p("Se7en bonus content", parent="Season 1")["kind"] is not Kind.EPISODE or \

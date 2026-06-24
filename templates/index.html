@@ -24,8 +24,9 @@
   </section>
 
   {% if has_key %}
-  <p class="metastatus ok">Daily-show episode lookup: <strong>{{ provider | upper }}</strong> enabled —
-    daily shows are matched to a real <code>S##E##</code> automatically after each scan.</p>
+  <p class="metastatus ok">Episode lookup: <strong>{{ provider | upper }}</strong> enabled —
+    daily-show air dates and absolute episode numbers (e.g. DVD “episode 61”) are
+    matched to a real <code>S##E##</code> automatically after each scan.</p>
   {% else %}
   <p class="metastatus warnline">Daily shows (Dateline, etc.) are named by air date. To match them to a
     real <code>S##E##</code>, add a TheTVDB or TMDB API key to a <code>.env</code> file (see
@@ -40,7 +41,7 @@
     <button data-approve="medium">+ medium</button>
     <button data-approve="all">Approve all renamable</button>
     <button data-approve="none" class="ghost">Clear all</button>
-    {% if has_key %}<button id="lookupAll" title="Re-run the TVDB/TMDB episode lookup">🔍 Re-look up daily episode #s (<span id="dateCount">0</span>)</button>{% endif %}
+    {% if has_key %}<button id="lookupAll" title="Re-run the TVDB/TMDB episode lookup (air date + absolute #)">🔍 Re-look up episode #s (<span id="dateCount">0</span>)</button>{% endif %}
     <span class="spacer"></span>
     <label><input type="checkbox" id="hideSkipped" checked> hide extras / undetermined</label>
     <button id="apply" class="primary">Apply approved (<span id="approvedCount">0</span>)</button>

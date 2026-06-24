@@ -130,6 +130,24 @@ def test_lookup_success_returns_episode_name(client, monkeypatch):
     assert "S25E07" in data["new_name"]
 
 
+def test_lookup_by_absolute_returns_episode_name(client, monkeypatch):
+    monkeypatch.setattr(appmod.metadata, "have_key", lambda: True)
+    called = {}
+
+    def fake_abs(show, absolute):
+        called["absolute"] = absolute
+        return {"season": 2, "episode": 11, "provider": "tvdb"}
+
+    monkeypatch.setattr(appmod.metadata, "lookup_by_absolute", fake_abs)
+    r = client.post("/api/lookup", json={
+        "show": "Garfield and Friends", "absolute": 61,
+        "path": "P:/TV/Garfield and Friends/garfield.vol3.episode_61.avi"})
+    data = r.get_json()
+    assert called["absolute"] == 61          # routed to absolute, not air-date
+    assert (data["season"], data["episode"]) == (2, 11)
+    assert "S02E11" in data["new_name"]
+
+
 # ---- page render ----------------------------------------------------------
 
 def test_index_renders(client):

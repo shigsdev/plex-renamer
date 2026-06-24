@@ -100,18 +100,20 @@ def api_scan():
 
 @app.post("/api/lookup")
 def api_lookup():
-    """Upgrade a daily-show file to S##E## via TMDB air-date matching."""
+    """Resolve a file to a real S##E## via the metadata provider — by air date
+    (daily shows) or by absolute episode number (e.g. DVD "episode 61")."""
     data = request.get_json(force=True)
     show = data.get("show", "")
-    airdate = data.get("airdate", "")
     if not metadata.have_key():
-        return jsonify(error="No TMDB_API_KEY set."), 400
-    hit = metadata.lookup_by_airdate(show, airdate)
+        return jsonify(error="No metadata API key set."), 400
+    if data.get("absolute") is not None:
+        hit = metadata.lookup_by_absolute(show, int(data["absolute"]))
+    else:
+        hit = metadata.lookup_by_airdate(show, data.get("airdate", ""))
     if not hit:
         return jsonify(found=False)
-    # Rebuild the name keeping any title text the date-name had.
-    path = data.get("path", "")
-    stem, ext = os.path.splitext(os.path.basename(path))
+    # Rebuild the name from the original stem with the resolved S##E##.
+    stem, ext = os.path.splitext(os.path.basename(data.get("path", "")))
     new_name = scanner.build_episode_name(stem, ext, hit["season"], hit["episode"])
     return jsonify(found=True, season=hit["season"], episode=hit["episode"],
                    new_name=new_name)

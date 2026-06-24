@@ -75,13 +75,21 @@ to `.env`** and fill in one of:
 
 `.env` is gitignored, so your key stays local. **Restart the app** after editing it.
 
-Once a key is set, the renamer shows a **"Daily-show episode lookup: … enabled"**
-banner, and you get two ways to resolve dates to episodes:
-- **"🔍 Look up daily episode #s"** — a bulk button that resolves every daily row
-  at once (the lookup caches each show's air-date map, so it's fast).
-- a per-row **🔍 ep #** button.
+Once a key is set, lookups run **automatically after every scan** (no button to
+click) and resolve two kinds of file to a real `S##E##`:
 
-With no key set, a banner tells you the feature is disabled and how to enable it.
+- **Daily shows** (Dateline, etc.) — matched by **air date** from the filename.
+- **Absolute episode numbers** — an `episode N` / `eNNN` file with no season
+  folder (e.g. a DVD rip `…vol3.episode_61…`) is mapped from its **absolute
+  number** to the real season/episode (TheTVDB stores absolute numbers).
+
+Each show's episode list is fetched once and cached, so even a big scan is fast.
+A **"🔍 Re-look up episode #s"** button re-runs it manually, and there's a per-row
+**🔍 ep #** button. With no key set, a banner explains how to enable it.
+
+> Note: an absolute/DVD number may differ from the database's order, so these
+> come through at MEDIUM confidence flagged "look up to confirm" — review before
+> applying.
 
 ## Command line (optional)
 

@@ -65,6 +65,15 @@ def lookup_by_airdate(show_name: str, airdate: str) -> dict | None:
     return _tmdb_lookup_by_airdate(show_name, airdate)
 
 
+def lookup_by_absolute(show_name: str, absolute: int) -> dict | None:
+    """Map an ABSOLUTE episode number (e.g. DVD "episode 61") to its real
+    season/episode. Returns {"season": s, "episode": e, "provider": ...} or None.
+    """
+    if _provider() == "tvdb":
+        return _tvdb_lookup_by_absolute(show_name, absolute)
+    return _tmdb_lookup_by_absolute(show_name, absolute)
+
+
 # ---------------------------------------------------------------------------
 # Shared HTTP helpers
 # ---------------------------------------------------------------------------
@@ -130,6 +139,21 @@ def _tmdb_lookup_by_airdate(show_name: str, airdate: str) -> dict | None:
     return None
 
 
+def _tmdb_lookup_by_absolute(show_name: str, absolute: int) -> dict | None:
+    """TMDB has no absolute numbers, so approximate by flattening seasons 1..N in
+    order — the Nth aired episode is taken as absolute N (best effort)."""
+    show_id = _tmdb_show_id(show_name)
+    if not show_id:
+        return None
+    count = 0
+    for season in range(1, _tmdb_num_seasons(show_id) + 1):
+        for _ad, s, e in sorted(_tmdb_season(show_id, season), key=lambda t: (t[1], t[2])):
+            count += 1
+            if count == absolute:
+                return {"season": s, "episode": e, "provider": "tmdb"}
+    return None
+
+
 # ---------------------------------------------------------------------------
 # TheTVDB — v4 API (login -> bearer token -> paged episodes)
 # ---------------------------------------------------------------------------
@@ -176,30 +200,42 @@ def _tvdb_show_id(name: str) -> int | None:
 
 
 @lru_cache(maxsize=32)
-def _tvdb_airdate_map(show_id: int) -> dict:
-    """Build {airdate: (season, episode)} for a series ONCE (paged), so repeated
-    air-date lookups for the same show are O(1) instead of re-fetching every page."""
-    out: dict[str, tuple[int, int]] = {}
+def _tvdb_episode_index(show_id: int) -> dict:
+    """Page a series' episodes ONCE and build both indexes — {airdate: (s, e)}
+    and {absolute_number: (s, e)} — so repeated lookups are O(1)."""
+    by_air: dict[str, tuple[int, int]] = {}
+    by_abs: dict[int, tuple[int, int]] = {}
     url = f"/series/{show_id}/episodes/default?page=0"
     for _ in range(50):  # hard page cap
         data = _tvdb_get(url)
         if not data:
             break
         for ep in data.get("data", {}).get("episodes", []):
+            se = (ep.get("seasonNumber"), ep.get("number"))
+            if None in se:
+                continue
             if ep.get("aired"):
-                out.setdefault(ep["aired"], (ep.get("seasonNumber"), ep.get("number")))
+                by_air.setdefault(ep["aired"], se)
+            if ep.get("absoluteNumber") is not None:
+                by_abs.setdefault(ep["absoluteNumber"], se)
         nxt = data.get("links", {}).get("next")
         if not nxt:
             break
         url = nxt
-    return out
+    return {"air": by_air, "abs": by_abs}
 
 
 def _tvdb_lookup_by_airdate(show_name: str, airdate: str) -> dict | None:
     show_id = _tvdb_show_id(show_name)
     if not show_id:
         return None
-    se = _tvdb_airdate_map(show_id).get(airdate)
-    if not se:
+    se = _tvdb_episode_index(show_id)["air"].get(airdate)
+    return {"season": se[0], "episode": se[1], "provider": "tvdb"} if se else None
+
+
+def _tvdb_lookup_by_absolute(show_name: str, absolute: int) -> dict | None:
+    show_id = _tvdb_show_id(show_name)
+    if not show_id:
         return None
-    return {"season": se[0], "episode": se[1], "provider": "tvdb"}
+    se = _tvdb_episode_index(show_id)["abs"].get(absolute)
+    return {"season": se[0], "episode": se[1], "provider": "tvdb"} if se else None

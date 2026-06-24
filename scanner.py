@@ -59,6 +59,7 @@ _JUNK_PATTERNS = [
     r"\bblu[ ._-]?ray\b", r"\bbdrip\b", r"\bbrrip\b", r"\bweb[ ._-]?dl\b",
     r"\bwebrip\b", r"\bweb\b", r"\bhdtv\b", r"\bdvdrip\b", r"\bdvd\b",
     r"\bremux\b", r"\brepack\b", r"\bproper\b", r"\binternal\b",
+    r"\bntsc\b", r"\bpal\b",                # DVD region standards
     r"\bAMZN\b", r"\bNF\b", r"\bDSNP\b", r"\bHMAX\b",
 ]
 # For display (title building) — same junk minus the year, so years stay in titles.
@@ -107,8 +108,9 @@ class Proposal:
     season: int | None = None
     episode: int | None = None
     airdate: str | None = None      # YYYY-MM-DD for daily shows
+    absolute: int | None = None     # absolute episode number to resolve via API
     note: str = ""
-    needs_lookup: bool = False      # date-based; could be upgraded via metadata API
+    needs_lookup: bool = False      # date/absolute; could be upgraded via metadata API
 
     @property
     def changed(self) -> bool:
@@ -137,7 +139,9 @@ def season_from_folder(name: str) -> int | None:
 
 def _clean_for_code(stem: str) -> str:
     """Strip junk tokens so a bare 3-4 digit episode code stands out."""
-    return _JUNK_RE.sub(" ", stem)
+    # Underscores are word chars, so "dvdrip_xvid" reads as one token and \b
+    # junk patterns miss it — normalize to spaces first.
+    return _JUNK_RE.sub(" ", stem.replace("_", " "))
 
 
 def _tidy_title(text: str) -> str:
@@ -153,11 +157,13 @@ def _strip_release_junk(text: str) -> str:
     """Remove quality/codec/source junk, [bracket] tags, and a trailing
     -RELEASEGROUP, leaving a human-readable title. Years are KEPT (Plex uses them
     to disambiguate). Conservative on trailing -token: only all-caps/lowercase."""
+    text = text.replace("_", " ")                           # so "dvdrip_xvid" splits
     text = _DISPLAY_JUNK_RE.sub(" ", text)
+    text = re.sub(r"\bvol(?:ume)?[ ._-]?\d{1,2}\b", " ", text, flags=re.IGNORECASE)  # DVD "vol2"
     text = re.sub(r"\[[^\]]*\]", " ", text)                 # [PRiME], [ExYu-Subs]
     # Trailing release group: only all-caps or all-lowercase tokens (BTW, ROFL,
     # vfua, lol) — NOT Titlecase words, so a title ending in "Pilot" survives.
-    text = re.sub(r"-\s*(?:[A-Z]{2,8}|[a-z]{2,8})\s*$", " ", text)
+    text = re.sub(r"-\s*(?:[A-Z]{2,12}|[a-z]{2,12})\s*$", " ", text)
     text = re.sub(r"(?<![A-Za-z0-9])\d(?![A-Za-z0-9])", " ", text)  # stray single digit (AAC2.0 -> 0)
     return text
 
@@ -224,13 +230,17 @@ def parse(stem: str, parent: str, forced_season: int | None, show: str = "") -> 
         or re.search(r"\bep[ ._-]*(\d{1,3})(?!\d)", stem, re.IGNORECASE) \
         or re.search(r"\be(\d{1,3})(?!\d)", stem, re.IGNORECASE)
     if m:
+        n = int(m.group(1))
         if folder_season is not None:
             return dict(kind=Kind.EPISODE, confidence=Confidence.HIGH,
-                        season=folder_season, episode=int(m.group(1)),
-                        note=f"ep {m.group(1)} from name, season {folder_season} from folder")
+                        season=folder_season, episode=n,
+                        note=f"ep {n} from name, season {folder_season} from folder")
+        # No season folder: the number may be ABSOLUTE (e.g. DVD "episode 61").
+        # Provisionally S01E{n}, but flag it for a metadata lookup that can remap
+        # the absolute number to the real season/episode.
         return dict(kind=Kind.EPISODE, confidence=Confidence.MEDIUM,
-                    season=1, episode=int(m.group(1)),
-                    note=f"ep {m.group(1)} from name, season 1 assumed (no season folder)")
+                    season=1, episode=n, absolute=n, needs_lookup=True,
+                    note=f"ep {n} from name, season 1 assumed — absolute # (look up to confirm)")
 
     # 7. "Part 3" with season from folder (miniseries default season 1).
     m = re.search(r"\bpart[ ._-]*(\d{1,3})\b", stem, re.IGNORECASE)
@@ -375,8 +385,8 @@ def scan(root: str, *, forced_season: int | None = None,
             p = Proposal(full, show, rel_dir, fname,
                          kind=r["kind"].value, confidence=r["confidence"].value,
                          season=r.get("season"), episode=r.get("episode"),
-                         airdate=r.get("airdate"), note=r["note"],
-                         needs_lookup=r.get("needs_lookup", False))
+                         airdate=r.get("airdate"), absolute=r.get("absolute"),
+                         note=r["note"], needs_lookup=r.get("needs_lookup", False))
 
             if r["kind"] is Kind.EPISODE:
                 p.new_name = build_episode_name(stem, ext, r["season"], r["episode"])
