@@ -59,6 +59,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 details { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
 summary { padding: 10px 14px; cursor: pointer; font-size: 15px; }
 summary .groupcheck { margin-right: 9px; vertical-align: middle; cursor: pointer; }
+.selectall { display: flex; gap: 9px; align-items: center; padding: 8px 14px; margin: 4px 0;
+  font-weight: 600; color: var(--txt); cursor: pointer; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); width: max-content; }
+.selectall .groupcheck { cursor: pointer; }
 .muted { color: var(--muted); font-weight: 400; }
 
 table { width: 100%; border-collapse: collapse; }

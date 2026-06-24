@@ -79,6 +79,20 @@ function renderRows() {
     groups.get(row.show).push(row);
   }
 
+  // master "select all" across every renamable row
+  const allChanged = ROWS.filter((r) => r.changed);
+  if (allChanged.length) {
+    const masterCb = h("input", { type: "checkbox", class: "groupcheck" });
+    syncGroupCheckbox(masterCb, allChanged);
+    masterCb.addEventListener("change", () => {
+      for (const r of allChanged) r._approved = masterCb.checked;
+      renderRows();
+    });
+    container.appendChild(h("label", { class: "selectall" }, [
+      masterCb, h("span", { text: `Select all (${allChanged.length})` }),
+    ]));
+  }
+
   for (const [show, rows] of [...groups.entries()].sort()) {
     const changedRows = rows.filter((r) => r.changed);
     const groupCb = h("input", { type: "checkbox", class: "groupcheck", title: "Select all in this show" });

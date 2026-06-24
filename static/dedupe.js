@@ -73,6 +73,22 @@ function renderGroups() {
     if (!byShow.has(g.show)) byShow.set(g.show, []);
     byShow.get(g.show).push(g);
   }
+
+  // master "select all" across every duplicate group
+  if (GROUPS.length) {
+    const masterCb = h("input", { type: "checkbox", class: "groupcheck" });
+    const approved = GROUPS.filter((g) => g._approved).length;
+    masterCb.checked = approved === GROUPS.length;
+    masterCb.indeterminate = approved > 0 && approved < GROUPS.length;
+    masterCb.addEventListener("change", () => {
+      for (const g of GROUPS) { g._keep = g.suggested_keep; g._approved = masterCb.checked; }
+      renderGroups();
+    });
+    container.appendChild(h("label", { class: "selectall" }, [
+      masterCb, h("span", { text: `Select all (${GROUPS.length})` }),
+    ]));
+  }
+
   for (const [show, groups] of [...byShow.entries()].sort()) {
     const groupCb = h("input", { type: "checkbox", class: "groupcheck", title: "Approve all episodes for this show" });
     const approved = groups.filter((g) => g._approved).length;
