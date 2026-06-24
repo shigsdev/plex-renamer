@@ -52,6 +52,10 @@ $("#scan").addEventListener("click", async () => {
   setStatus(`Scanned ${data.rows.length} files needing attention.`);
   $("#summary").classList.remove("hidden");
   $("#controls").classList.remove("hidden");
+  // Automatically resolve daily-show air dates to S##E## when a key is set.
+  if (window.HAS_KEY && ROWS.some((r) => r.kind === "date")) {
+    await lookupAllDates();
+  }
 });
 
 function renderSummary(s) {
