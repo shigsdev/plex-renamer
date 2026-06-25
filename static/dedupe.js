@@ -137,7 +137,7 @@ function buildGroup(g) {
       h("span", { class: "drive", text: `[${c.drive}]` }),
       h("span", { class: "res", text: res }),
       h("span", { class: "size", text: human(c.size) }),
-      h("span", { class: "fname", text: c.filename }),
+      h("span", { class: "fpath", text: c.path.replace(/\//g, "\\"), title: c.path }),
     ]);
     box.appendChild(row);
   });
