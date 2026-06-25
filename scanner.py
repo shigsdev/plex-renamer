@@ -35,7 +35,9 @@ CANONICAL_SE = re.compile(r"[Ss]\d{1,2}[Ee]\d{1,3}")
 # Plex ALSO matches S## and E## with a separator between them ("S02.E04",
 # "S02 E04"), so a file already in any of those forms is left alone — no churn.
 # (E must be followed directly by a digit, so "S01 EP01" is still normalized.)
-PLEX_OK_SE = re.compile(r"[Ss]\d{1,2}[ ._-]*[Ee]\d{1,3}")
+# The season may be up to 4 digits: some shows use the YEAR as the season
+# (e.g. Shark Week "S2023E15"), which Plex reads fine — leave those alone too.
+PLEX_OK_SE = re.compile(r"[Ss]\d{1,4}[ ._-]*[Ee]\d{1,3}")
 
 # 4-digit years: junk for episode-CODE matching (so "1994" never becomes S19E94),
 # but KEPT in the displayed title (Plex uses the year to disambiguate, e.g.

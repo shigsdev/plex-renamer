@@ -127,6 +127,15 @@ def test_separator_SE_is_plex_ok_and_left_alone(tmp_path):
     assert scanner.scan(str(tmp_path)) == []
 
 
+def test_year_based_season_is_plex_ok(tmp_path):
+    # Shark Week uses the YEAR as the season (S2023E15) — already Plex-readable,
+    # so leave it alone instead of mangling "2023" into S20E23
+    d = tmp_path / "Shark Week 1987" / "Season 2023"
+    d.mkdir(parents=True)
+    (d / "Shark Week 1987 S2023E15 1080p AMZN WEB-DL H265 SDR DDP 2 0 English-HONE.mkv").write_text("")
+    assert [p for p in scanner.scan(str(tmp_path)) if p.changed] == []
+
+
 def test_S_space_EP_is_still_normalized(tmp_path):
     # "S01 EP01" (E followed by a letter) is NOT Plex-readable -> still renamed
     d = tmp_path / "Lost" / "Season 1"
