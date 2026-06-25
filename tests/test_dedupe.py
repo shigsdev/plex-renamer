@@ -103,7 +103,53 @@ def test_to_dict_shape(tmp_path, monkeypatch):
     monkeypatch.setattr(dedupe, "_drive_of",
                         lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
     d = dedupe.find_duplicates([p, q], cross_drive_only=True)[0].to_dict()
-    assert d["se"] == "S02E03"
+    assert d["kind"] == "episode"
+    assert d["se"] == "S02E03" and d["label"] == "S02E03"
     assert d["drives"] == ["P", "Q"]
     assert "suggested_keep" in d and "reclaimable_bytes" in d
     assert len(d["copies"]) == 2
+
+
+# ---- movies ---------------------------------------------------------------
+
+def _make_movie(root, folder, fname, blob="x" * 10):
+    d = os.path.join(root, folder)
+    os.makedirs(d, exist_ok=True)
+    p = os.path.join(d, fname)
+    with open(p, "w") as fh:
+        fh.write(blob)
+    return p
+
+
+def test_movies_grouped_by_title_year_not_fake_episode(tmp_path, monkeypatch):
+    p = str(tmp_path / "P" / "Movies")
+    q = str(tmp_path / "Q" / "Movies")
+    _make_movie(p, "The Matrix (1999)", "The.Matrix.1999.1080p.BluRay.mkv")
+    _make_movie(q, "The Matrix (1999)", "The Matrix (1999) 2160p.mkv", blob="x" * 20)
+    _make_movie(p, "Heat (1995)", "Heat.1995.720p.mkv")   # only one copy -> not a dup
+    monkeypatch.setattr(dedupe, "_drive_of",
+                        lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
+    groups = dedupe.find_duplicates([p, q], cross_drive_only=True)
+    assert len(groups) == 1
+    g = groups[0]
+    assert g.kind == "movie"
+    assert g.show == "The Matrix" and g.year == 1999
+    assert g.season is None and g.episode is None
+    # higher-resolution copy is the suggested keeper
+    assert g.copies[g.suggested_keep].resolution == 2160
+    d = g.to_dict()
+    assert d["kind"] == "movie" and d["label"] == "(1999)" and d["year"] == 1999
+
+
+def test_multi_part_movie_not_a_self_duplicate(tmp_path, monkeypatch):
+    p = str(tmp_path / "P" / "Movies")
+    q = str(tmp_path / "Q" / "Movies")
+    for root in (p, q):
+        _make_movie(root, "Epic (2001)", "Epic.2001.CD1.mkv")
+        _make_movie(root, "Epic (2001)", "Epic.2001.CD2.mkv")
+    monkeypatch.setattr(dedupe, "_drive_of",
+                        lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
+    groups = dedupe.find_duplicates([p, q], cross_drive_only=True)
+    # CD1 and CD2 are distinct parts -> two duplicate groups, not one of four
+    assert len(groups) == 2
+    assert all(len(g.copies) == 2 for g in groups)

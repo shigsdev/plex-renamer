@@ -84,3 +84,11 @@ mocked).
 - Renamer core: parser, web UI (scan/approve/bulk/streamed-apply/undo), CLI,
   TMDB+TheTVDB daily lookup, multi-folder scan, append-only audit log.
 - CI: GitHub Actions (ruff + pytest + coverage) on py3.11–3.13.
+- **Dedupe: movies categorized at a movie level (2026-06-25).** Files under a
+  `Movies`/`Films` library are no longer parsed as TV episodes (which mis-fired a
+  fake `S##E##` from stray numbers in movie names). They're now identified by
+  `(title, year)` via `scanner.is_movie_path` + `scanner.movie_identity`
+  (parenthesized year wins over a title number like "Blade Runner 2049 (2017)";
+  CD/Part splits kept distinct), grouped under their own **Movies** section in the
+  `/dedupe` UI as one card per film titled `Title (Year)`. Tests added in
+  `test_scanner.py` + `test_dedupe.py`.

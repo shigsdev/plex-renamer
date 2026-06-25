@@ -386,6 +386,16 @@ _SEASON_FOLDER_RE = re.compile(r"^(?:season|series)\b|^s\d{1,2}$|^specials$", re
 # library (e.g. scanning "P:\" instead of "P:\TV Shows").
 # Specific enough not to match real show titles ("Show Me a Hero", "Movie 43").
 _LIBRARY_FOLDER_RE = re.compile(r"^(?:tv[ ._-]?shows|movies|anime)\b", re.IGNORECASE)
+# Movie library containers — a file under one of these is a MOVIE, not a TV
+# episode, and must be deduped by (title, year), never forced into a fake
+# S##E##. Matches the library folder ("Movies", "Movies 4K", "Films") but NOT a
+# show/film whose title merely starts with "movie" (e.g. "Movie 43").
+_MOVIES_FOLDER_RE = re.compile(r"^(?:movies|films|cinema)\b", re.IGNORECASE)
+# Multi-part movie markers ("CD1", "Part 2", "Disc 1") — kept distinct so a
+# legitimately split movie isn't collapsed into a duplicate of itself.
+_MOVIE_PART_RE = re.compile(r"\b(?:cd|disc|disk|part|pt)[ ._-]*(\d{1,2})\b", re.IGNORECASE)
+# A standalone 4-digit movie year, optionally parenthesized ("(1999)").
+_MOVIE_YEAR_RE = re.compile(r"(?:19|20)\d{2}")
 
 # NAS / OS recycle-bin, snapshot and system folders — never scan into these.
 _EXCLUDE_DIR_RE = re.compile(
@@ -415,6 +425,45 @@ def _show_name(root: str, dirpath: str) -> str:
     if rel == ".":
         return os.path.basename(os.path.abspath(root))
     return rel.split(os.sep)[0]
+
+
+def is_movie_path(path: str) -> bool:
+    """True when the file lives under a Movies / Films library container.
+
+    Movies are identified by their library folder, not by parsing the filename —
+    so they are deduped by (title, year) and NEVER coerced into a TV S##E##."""
+    parts = os.path.normpath(os.path.abspath(path)).split(os.sep)
+    return any(_MOVIES_FOLDER_RE.match(p) for p in parts)
+
+
+def movie_identity(stem: str, parent: str) -> tuple[str, int | None, int]:
+    """Normalized ``(title, year, part)`` for a movie file.
+
+    Plex movie folders are ``Title (Year)``, so the parent folder is preferred
+    when it carries a year; otherwise fall back to the filename. A parenthesized
+    year wins over a bare one so "Blade Runner 2049 (2017)" yields year 2017, not
+    2049. ``part`` is the CD/disc/part number (0 when single-file) so a split
+    movie isn't treated as a duplicate of itself. Title keeps its original case
+    (the caller lower-cases for the match key)."""
+    part_src = f"{parent} {stem}"
+    pm = _MOVIE_PART_RE.search(part_src)
+    part = int(pm.group(1)) if pm else 0
+    for source in (parent, stem):
+        paren = re.search(r"[([]((?:19|20)\d{2})[)\]]", source)
+        if paren:
+            year, cut = int(paren.group(1)), paren.start()
+        else:
+            bare = _MOVIE_YEAR_RE.search(source)
+            if not bare:
+                continue
+            year, cut = int(bare.group(0)), bare.start()
+        title = re.sub(r"[([{]\s*$", "", source[:cut])     # drop a dangling "("
+        title = _tidy_title(_strip_release_junk(title))
+        if title:
+            return title, year, part
+    # No year anywhere — title only (year unknown).
+    title = _tidy_title(_strip_release_junk(stem)) or _tidy_title(parent)
+    return title, None, part
 
 
 def scan(root: str, *, forced_season: int | None = None,

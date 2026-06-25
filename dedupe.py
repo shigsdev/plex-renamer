@@ -70,10 +70,12 @@ class Copy:
 
 @dataclass
 class DupGroup:
-    library: str             # "TV Shows" / "TV Shows Matteo"
-    show: str
-    season: int
-    episode: int
+    kind: str                # "episode" | "movie"
+    library: str             # "TV Shows" / "TV Shows Matteo" / "Movies"
+    show: str                # series name, or movie title for movies
+    season: int | None       # None for movies
+    episode: int | None      # None for movies
+    year: int | None         # set for movies (None if unknown); None for episodes
     copies: list[Copy]
     suggested_keep: int      # index into copies (highest res, tie-break size)
 
@@ -86,11 +88,19 @@ class DupGroup:
         """Bytes freed if only the suggested keeper is kept."""
         return sum(c.size for i, c in enumerate(self.copies) if i != self.suggested_keep)
 
+    @property
+    def label(self) -> str:
+        """Short identifier shown on the group: S##E## for TV, (year) for movies."""
+        if self.kind == "movie":
+            return f"({self.year})" if self.year else "movie"
+        return f"S{self.season:02d}E{self.episode:02d}"
+
     def to_dict(self) -> dict:
         return {
-            "library": self.library, "show": self.show,
-            "season": self.season, "episode": self.episode,
-            "se": f"S{self.season:02d}E{self.episode:02d}",
+            "kind": self.kind, "library": self.library, "show": self.show,
+            "season": self.season, "episode": self.episode, "year": self.year,
+            "label": self.label,
+            "se": self.label,                 # back-compat alias for the UI
             "copies": [c.to_dict() for c in self.copies],
             "suggested_keep": self.suggested_keep,
             "drives": sorted(self.drives),
@@ -139,7 +149,8 @@ def find_duplicates(roots: list[str], *, cross_drive_only: bool = True) -> list[
     the accidental-duplication case we care about).
     """
     groups: dict[tuple, list[Copy]] = {}
-    display: dict[tuple, tuple[str, str]] = {}   # key -> (library, show) for output
+    # key -> (kind, library, show/title, season, episode, year) for display
+    display: dict[tuple, tuple] = {}
     for root in roots:
         if not os.path.isdir(root):
             continue
@@ -147,19 +158,27 @@ def find_duplicates(roots: list[str], *, cross_drive_only: bool = True) -> list[
         drive = _drive_of(root)
         for dirpath, _dirs, entries in _walk_scandir(root):
             parent = os.path.basename(dirpath)
-            show = scanner._show_name(root, dirpath)   # robust to scan depth
+            is_movie = scanner.is_movie_path(dirpath)
+            show = "" if is_movie else scanner._show_name(root, dirpath)
             for fname, size in entries:
                 stem, ext = os.path.splitext(fname)
                 if ext.lower() not in scanner.VIDEO_EXTS:
                     continue
-                se = episode_key(stem, parent, show)
-                if se is None:
-                    continue
                 full = os.path.join(dirpath, fname)
-                key = (library.lower(), show.lower(), se[0], se[1])
+                if is_movie:
+                    title, year, part = scanner.movie_identity(stem, parent)
+                    if not title:
+                        continue
+                    key = ("movie", library.lower(), title.lower(), year, part)
+                    display.setdefault(key, ("movie", library, title, None, None, year))
+                else:
+                    se = episode_key(stem, parent, show)
+                    if se is None:
+                        continue
+                    key = ("episode", library.lower(), show.lower(), se[0], se[1])
+                    display.setdefault(key, ("episode", library, show, se[0], se[1], None))
                 groups.setdefault(key, []).append(
                     Copy(full, drive, fname, size, _resolution(fname)))
-                display.setdefault(key, (library, show))
 
     out: list[DupGroup] = []
     for key, copies in groups.items():
@@ -168,11 +187,13 @@ def find_duplicates(roots: list[str], *, cross_drive_only: bool = True) -> list[
         if cross_drive_only and len({c.drive for c in copies}) < 2:
             continue
         copies.sort(key=lambda c: (c.drive, c.filename))   # stable display order
-        lib_disp, show_disp = display[key]
+        kind, lib_disp, show_disp, season, episode, year = display[key]
         out.append(DupGroup(
-            library=lib_disp, show=show_disp, season=key[2], episode=key[3],
+            kind=kind, library=lib_disp, show=show_disp,
+            season=season, episode=episode, year=year,
             copies=copies, suggested_keep=_suggest_keep(copies)))
-    out.sort(key=lambda g: (g.show.lower(), g.season, g.episode))
+    # episodes first (sorted by show/season/ep), then movies (by title/year)
+    out.sort(key=lambda g: (g.kind, g.show.lower(), g.season or 0, g.episode or 0, g.year or 0))
     return out
 
 
@@ -192,7 +213,7 @@ def _summary(roots: list[str]) -> int:
     print(f"Reclaimable if keeping one copy each: {_human(total_reclaim)}")
     print("=" * 70)
     for g in groups[:30]:
-        print(f"\n{g.show}  S{g.season:02d}E{g.episode:02d}  (drives {','.join(sorted(g.drives))})")
+        print(f"\n{g.show}  {g.label}  (drives {','.join(sorted(g.drives))})")
         for i, c in enumerate(g.copies):
             mark = "  <-- suggest KEEP" if i == g.suggested_keep else ""
             res = f"{c.resolution}p" if c.resolution else "?res"

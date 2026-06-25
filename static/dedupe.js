@@ -51,30 +51,25 @@ $("#scan").addEventListener("click", async () => {
   GROUPS = data.groups.map((g) => ({ ...g, _keep: g.suggested_keep, _approved: false }));
   renderSummary(data.summary);
   renderGroups();
-  setStatus(`Found ${data.summary.groups} duplicate episode(s).`);
+  setStatus(`Found ${data.summary.groups} duplicate item(s).`);
   $("#summary").classList.remove("hidden");
   $("#controls").classList.remove("hidden");
 });
 
 function renderSummary(s) {
   $("#summary").replaceChildren(
-    h("span", { class: "pill guess", text: `${s.groups} duplicate episodes` }),
+    h("span", { class: "pill guess", text: `${s.groups} duplicate items` }),
     h("span", { class: "pill skip", text: `${s.copies} copies total` }),
     h("span", { class: "pill date", text: `${human(s.reclaimable_bytes)} reclaimable` }),
   );
 }
 
-/* ---- render groups, grouped by show ---- */
+/* ---- render groups: TV shows (grouped by show) + Movies (one box each) ---- */
 function renderGroups() {
   const container = $("#results");
   container.replaceChildren();
-  const byShow = new Map();
-  for (const g of GROUPS) {
-    if (!byShow.has(g.show)) byShow.set(g.show, []);
-    byShow.get(g.show).push(g);
-  }
 
-  // master "select all" across every duplicate group
+  // master "select all" across every duplicate group (TV + movies)
   if (GROUPS.length) {
     const masterCb = h("input", { type: "checkbox", class: "groupcheck" });
     const approved = GROUPS.filter((g) => g._approved).length;
@@ -89,6 +84,20 @@ function renderGroups() {
     ]));
   }
 
+  const tv = GROUPS.filter((g) => g.kind !== "movie");
+  const movies = GROUPS.filter((g) => g.kind === "movie");
+  if (tv.length) renderTvSection(container, tv);
+  if (movies.length) renderMovieSection(container, movies);
+  updateApproved();
+}
+
+function renderTvSection(container, tv) {
+  container.appendChild(h("h2", { class: "sechead", text: `TV Shows (${tv.length})` }));
+  const byShow = new Map();
+  for (const g of tv) {
+    if (!byShow.has(g.show)) byShow.set(g.show, []);
+    byShow.get(g.show).push(g);
+  }
   for (const [show, groups] of [...byShow.entries()].sort()) {
     const groupCb = h("input", { type: "checkbox", class: "groupcheck", title: "Approve all episodes for this show" });
     const approved = groups.filter((g) => g._approved).length;
@@ -109,11 +118,22 @@ function renderGroups() {
     for (const g of groups) details.appendChild(buildGroup(g));
     container.appendChild(details);
   }
-  updateApproved();
+}
+
+function renderMovieSection(container, movies) {
+  container.appendChild(h("h2", { class: "sechead", text: `Movies (${movies.length})` }));
+  // Each movie is its own duplicate set — no series wrapper. One card per movie.
+  for (const g of [...movies].sort((a, b) => a.show.localeCompare(b.show))) {
+    container.appendChild(h("div", { class: "moviecard" }, [buildGroup(g)]));
+  }
 }
 
 function buildGroup(g) {
   const box = h("div", { class: "dupgroup" });
+  // TV: bold "S01E01". Movie: bold "The Matrix (1999)".
+  const heading = g.kind === "movie"
+    ? (g.year ? `${g.show} (${g.year})` : g.show)
+    : g.se;
   const head = h("label", { class: "dupapprove" }, [
     (() => {
       const cb = h("input", { type: "checkbox" });
@@ -121,12 +141,12 @@ function buildGroup(g) {
       cb.addEventListener("change", () => { g._approved = cb.checked; box.classList.toggle("approved", cb.checked); updateApproved(); });
       return cb;
     })(),
-    h("span", { class: "se", text: g.se }),
+    h("span", { class: "se", text: heading }),
     h("span", { class: "muted", text: " — approve removal of the non-kept copies" }),
   ]);
   box.appendChild(head);
 
-  const name = `keep-${g.show}-${g.se}`.replace(/[^a-z0-9]/gi, "_");
+  const name = `keep-${g.kind}-${g.show}-${g.se}`.replace(/[^a-z0-9]/gi, "_");
   g.copies.forEach((c, i) => {
     const radio = h("input", { type: "radio", name });
     radio.checked = i === g._keep;

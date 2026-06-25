@@ -118,6 +118,47 @@ def test_show_name_does_not_treat_show_titled_like_library_as_container():
     assert scanner._show_name("P:/TV Shows", "P:/TV Shows/Show Me a Hero/Season 1") == "Show Me a Hero"
 
 
+# ---- movies ---------------------------------------------------------------
+
+def test_is_movie_path_detects_movie_library():
+    assert scanner.is_movie_path("P:/Movies/The Matrix (1999)/The Matrix.mkv")
+    assert scanner.is_movie_path("N:/Films/Heat (1995)/heat.mkv")
+    assert scanner.is_movie_path("P:/Movies 4K/Dune (2021)/dune.mkv")
+
+
+def test_is_movie_path_false_for_tv_and_lookalike_titles():
+    assert not scanner.is_movie_path("P:/TV Shows/Profiler/Season 3/x.mkv")
+    # a film/show whose TITLE starts with "Movie" must NOT be read as the library
+    assert not scanner.is_movie_path("P:/TV Shows/Movie 43/Season 1/x.mkv")
+
+
+def test_movie_identity_from_plex_folder():
+    assert scanner.movie_identity(
+        "The.Matrix.1999.1080p.BluRay.x264", "The Matrix (1999)") == ("The Matrix", 1999, 0)
+
+
+def test_movie_identity_from_filename_when_folder_has_no_year():
+    # loose file directly under the library — parent is "Movies", year from name
+    assert scanner.movie_identity(
+        "Heat.1995.720p.BrRip", "Movies") == ("Heat", 1995, 0)
+
+
+def test_movie_identity_parenthesized_year_wins_over_title_number():
+    # "Blade Runner 2049 (2017)" -> keep 2049 in the title, year is 2017
+    assert scanner.movie_identity(
+        "Blade.Runner.2049.2017.2160p", "Blade Runner 2049 (2017)") == ("Blade Runner 2049", 2017, 0)
+
+
+def test_movie_identity_multi_part_kept_distinct():
+    assert scanner.movie_identity("Movie.2001.CD2", "Movie (2001)") == ("Movie", 2001, 2)
+    assert scanner.movie_identity("Movie.2001.CD1", "Movie (2001)") == ("Movie", 2001, 1)
+
+
+def test_movie_identity_no_year_falls_back_to_title():
+    title, year, part = scanner.movie_identity("Some.Obscure.Film", "Some Obscure Film")
+    assert title == "Some Obscure Film" and year is None and part == 0
+
+
 def test_separator_SE_is_plex_ok_and_left_alone(tmp_path):
     # "S02.E04" and "S02 E04" are Plex-readable, so don't churn them
     d = tmp_path / "Gangland (2007)" / "Season 2"
