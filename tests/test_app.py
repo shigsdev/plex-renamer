@@ -222,6 +222,22 @@ def test_dedupe_scan_finds_cross_drive_group(client, tmp_path, monkeypatch):
     assert g["copies"][g["suggested_keep"]]["resolution"] == 2160   # keep the 2160p
 
 
+def test_dedupe_scan_same_drive_toggle(client, tmp_path, monkeypatch):
+    season = tmp_path / "P" / "TV Shows" / "Show" / "Season 1"
+    season.mkdir(parents=True)
+    (season / "Show S01E01 1080p.mkv").write_text("xxxx")
+    (season / "Show.S01E01.720p.mkv").write_text("xx")     # same episode, same drive
+    raw = str(tmp_path / "P" / "TV Shows")
+    monkeypatch.setattr(dedupe, "_drive_of", lambda path: "P")
+    # default (no flag) finds the same-drive duplicate
+    d = client.post("/api/dedupe/scan", json={"directory": raw}).get_json()
+    assert d["summary"]["groups"] == 1
+    # cross-drive-only hides it (only one drive involved)
+    d2 = client.post("/api/dedupe/scan",
+                     json={"directory": raw, "cross_drive_only": True}).get_json()
+    assert d2["summary"]["groups"] == 0
+
+
 def test_dedupe_remove_streams_and_trashes(client, tmp_path, monkeypatch):
     raw = _two_drive_dup(tmp_path)
     monkeypatch.setattr(dedupe, "_drive_of",

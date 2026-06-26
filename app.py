@@ -172,7 +172,10 @@ def api_dedupe_scan():
     if bad:
         return jsonify(error="Not a directory: " + ", ".join(repr(d) for d in bad)), 400
 
-    groups = dedupe.find_duplicates(dirs, cross_drive_only=True)
+    # Default: find ALL duplicates (within a drive AND across drives). The UI can
+    # opt into cross-drive-only to focus on the accidental-mirror case.
+    cross_only = bool(data.get("cross_drive_only", False))
+    groups = dedupe.find_duplicates(dirs, cross_drive_only=cross_only)
     rows = [g.to_dict() for g in groups]
     summary = {
         "groups": len(rows),

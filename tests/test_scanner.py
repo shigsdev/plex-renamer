@@ -159,6 +159,18 @@ def test_movie_identity_no_year_falls_back_to_title():
     assert title == "Some Obscure Film" and year is None and part == 0
 
 
+def test_movie_identity_keeps_sequel_number():
+    # a lone digit is a sequel number for movies, not an audio-tag stray digit
+    assert scanner.movie_identity("Deadpool.2.2018.Theatrical.2160p", "")[:2] == ("Deadpool 2", 2018)
+
+
+def test_movie_identity_sequel_not_merged_with_original_when_no_year():
+    # the Die Hard regression: "Die Hard 2" must not collapse to "Die Hard"
+    a = scanner.movie_identity("Die.Hard.2.BluRay.1080p.x264", "")
+    b = scanner.movie_identity("Die.Hard.BluRay.1080p.x264", "")
+    assert a[0].lower() != b[0].lower()
+
+
 def test_separator_SE_is_plex_ok_and_left_alone(tmp_path):
     # "S02.E04" and "S02 E04" are Plex-readable, so don't churn them
     d = tmp_path / "Gangland (2007)" / "Season 2"

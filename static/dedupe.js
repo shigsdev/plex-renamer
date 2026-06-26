@@ -116,7 +116,9 @@ $("#scan").addEventListener("click", async () => {
   const paths = selectedPaths();
   if (!paths.length) { setStatus("Pick at least one drive or library above (or paste a path)."); return; }
   setStatus("Scanning for duplicates… (walks every drive — can take a minute)", true);
-  const { ok, data } = await postJSON("/api/dedupe/scan", { directory: paths.join("\n") });
+  const crossOnly = $("#crossonly")?.checked || false;
+  const { ok, data } = await postJSON("/api/dedupe/scan",
+    { directory: paths.join("\n"), cross_drive_only: crossOnly });
   if (!ok) { setStatus(data.error || "Scan failed."); return; }
   GROUPS = data.groups.map((g) => ({ ...g, _keep: g.suggested_keep, _approved: false }));
   renderSummary(data.summary);

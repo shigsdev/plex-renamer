@@ -225,6 +225,33 @@ def test_list_drive_libraries_shape(tmp_path, monkeypatch):
                     "libraries": [{"name": "TV Shows", "path": "P:\\TV Shows"}]}]
 
 
+def test_same_drive_movie_dupes_found_when_not_cross_only(tmp_path):
+    # two quality copies of one movie in the SAME library on the SAME drive
+    p = str(tmp_path / "P" / "Movies")
+    _make_movie(p, "Heat (1995)", "Heat.1995.1080p.mkv")
+    _make_movie(p, "Heat (1995)", "Heat.1995.2160p.mkv", blob="x" * 20)
+    assert dedupe.find_duplicates([p], cross_drive_only=True) == []      # hidden
+    groups = dedupe.find_duplicates([p], cross_drive_only=False)         # shown
+    assert len(groups) == 1 and groups[0].kind == "movie"
+    assert {c.filename for c in groups[0].copies} == {"Heat.1995.1080p.mkv", "Heat.1995.2160p.mkv"}
+
+
+def test_movie_extras_not_treated_as_duplicate_of_the_film(tmp_path, monkeypatch):
+    p = str(tmp_path / "P" / "Movies")
+    q = str(tmp_path / "Q" / "Movies")
+    _make_movie(p, "The Matrix (1999)", "The.Matrix.1999.1080p.mkv")
+    _make_movie(q, "The Matrix (1999)", "The Matrix (1999) 2160p.mkv", blob="x" * 20)
+    # trailers share the movie's title+year — must NOT be grouped with it
+    _make_movie(p, "The Matrix (1999)", "The Matrix (1999)-trailer.mkv")
+    _make_movie(q, "The Matrix (1999)", "The.Matrix.1999.featurette.mkv")
+    monkeypatch.setattr(dedupe, "_drive_of",
+                        lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
+    groups = dedupe.find_duplicates([p, q], cross_drive_only=True)
+    assert len(groups) == 1                                              # just the film
+    flat = [c.filename.lower() for g in groups for c in g.copies]
+    assert not any("trailer" in f or "featurette" in f for f in flat)
+
+
 def test_multi_part_movie_not_a_self_duplicate(tmp_path, monkeypatch):
     p = str(tmp_path / "P" / "Movies")
     q = str(tmp_path / "Q" / "Movies")

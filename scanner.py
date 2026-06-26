@@ -156,10 +156,15 @@ def _tidy_title(text: str) -> str:
     return text.strip(" _.-")
 
 
-def _strip_release_junk(text: str) -> str:
+def _strip_release_junk(text: str, *, keep_digits: bool = False) -> str:
     """Remove quality/codec/source junk, [bracket] tags, and a trailing
     -RELEASEGROUP, leaving a human-readable title. Years are KEPT (Plex uses them
-    to disambiguate). Conservative on trailing -token: only all-caps/lowercase."""
+    to disambiguate). Conservative on trailing -token: only all-caps/lowercase.
+
+    ``keep_digits``: skip the stray-single-digit strip. Off by default (episode
+    titles want "AAC 2 0" cleaned to nothing); movies set it ON so a lone sequel
+    number survives — without it "Die Hard 2" collapses to "Die Hard" and two
+    different films merge into one bogus duplicate."""
     text = text.replace("_", " ")                           # so "dvdrip_xvid" splits
     text = _DISPLAY_JUNK_RE.sub(" ", text)
     text = re.sub(r"\bvol(?:ume)?[ ._-]?\d{1,2}\b", " ", text, flags=re.IGNORECASE)  # DVD "vol2"
@@ -167,7 +172,8 @@ def _strip_release_junk(text: str) -> str:
     # Trailing release group: only all-caps or all-lowercase tokens (BTW, ROFL,
     # vfua, lol) — NOT Titlecase words, so a title ending in "Pilot" survives.
     text = re.sub(r"-\s*(?:[A-Z]{2,12}|[a-z]{2,12})\s*$", " ", text)
-    text = re.sub(r"(?<![A-Za-z0-9])\d(?![A-Za-z0-9])", " ", text)  # stray single digit (AAC2.0 -> 0)
+    if not keep_digits:
+        text = re.sub(r"(?<![A-Za-z0-9])\d(?![A-Za-z0-9])", " ", text)  # stray single digit (AAC2.0 -> 0)
     return text
 
 
@@ -458,11 +464,11 @@ def movie_identity(stem: str, parent: str) -> tuple[str, int | None, int]:
                 continue
             year, cut = int(bare.group(0)), bare.start()
         title = re.sub(r"[([{]\s*$", "", source[:cut])     # drop a dangling "("
-        title = _tidy_title(_strip_release_junk(title))
+        title = _tidy_title(_strip_release_junk(title, keep_digits=True))
         if title:
             return title, year, part
     # No year anywhere — title only (year unknown).
-    title = _tidy_title(_strip_release_junk(stem)) or _tidy_title(parent)
+    title = _tidy_title(_strip_release_junk(stem, keep_digits=True)) or _tidy_title(parent)
     return title, None, part
 
 

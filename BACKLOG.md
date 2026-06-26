@@ -84,6 +84,19 @@ mocked).
 - Renamer core: parser, web UI (scan/approve/bulk/streamed-apply/undo), CLI,
   TMDB+TheTVDB daily lookup, multi-folder scan, append-only audit log.
 - CI: GitHub Actions (ruff + pytest + coverage) on py3.11–3.13.
+- **Dedupe: also find same-drive duplicates (2026-06-26).** The scan was
+  cross-drive-only (`find_duplicates(cross_drive_only=True)`), so two copies of a
+  movie/episode within ONE drive never showed — the user's same-drive duplicate
+  movies were invisible. Now the API defaults to finding ALL duplicates (within
+  and across drives); a `/dedupe` checkbox "across different drives only"
+  (`cross_drive_only`) narrows back to the accidental-mirror case. Also fixed two
+  movie issues this exposed: (1) trailers/featurettes in a movie folder share the
+  film's title+year and were grouped as a duplicate of the film — now skipped via
+  `scanner._EXTRA_RE`; (2) the title cleaner stripped lone digits (for audio tags
+  like "AAC 2 0"), collapsing "Die Hard 2" → "Die Hard" and merging different
+  films — `movie_identity` now passes `keep_digits=True` so sequel numbers
+  survive (also fixes "Deadpool 2" mislabeled "Deadpool"). Real scan of P:\Movies:
+  31 groups → 29 after the Die Hard false-positive fix.
 - **Dedupe: safer keeper when resolution is unknown (2026-06-25).** The keeper
   suggestion used to rank resolution-first, so a copy whose name omits "1080p"
   (resolution `?`) lost to a smaller copy that spelled it out — e.g. a 3 GB

@@ -261,6 +261,10 @@ def find_duplicates(roots: list[str], *, cross_drive_only: bool = True) -> list[
                     continue
                 full = os.path.join(dirpath, fname)
                 if is_movie:
+                    # A trailer/featurette/etc. shares the movie's title+year, so
+                    # without this guard it looks like a duplicate of the film.
+                    if scanner._EXTRA_RE.search(stem):
+                        continue
                     title, year, part = scanner.movie_identity(stem, parent)
                     if not title:
                         continue
