@@ -84,6 +84,13 @@ mocked).
 - Renamer core: parser, web UI (scan/approve/bulk/streamed-apply/undo), CLI,
   TMDB+TheTVDB daily lookup, multi-folder scan, append-only audit log.
 - CI: GitHub Actions (ruff + pytest + coverage) on py3.11–3.13.
+- **Dedupe: drive picker (2026-06-25).** `/dedupe` now auto-detects local drives
+  (`GET /api/dedupe/drives` → `dedupe.list_drive_libraries`, Windows logical-drive
+  bitmask with an A:..Z: fallback) and the media-library folders on each, and
+  shows them as click-to-select checkboxes (per-library, with a drive-level
+  select-all) instead of typing paths. Manual paste kept behind an "or paste
+  folder paths manually" disclosure. Scans the checked **library** folders (not
+  bare drive roots) so cross-drive matching still keys on the library name.
 - **Dedupe: movies categorized at a movie level (2026-06-25).** Files under a
   `Movies`/`Films` library are no longer parsed as TV episodes (which mis-fired a
   fake `S##E##` from stray numbers in movie names). They're now identified by

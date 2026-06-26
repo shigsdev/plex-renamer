@@ -41,12 +41,82 @@ async function postJSON(url, body) {
   return { ok: r.ok, data: await r.json() };
 }
 
+/* ---- drive picker ---- */
+function selectedPaths() {
+  const picked = [...document.querySelectorAll(".drivepick input.libcb:checked")]
+    .map((c) => c.dataset.path)
+    .filter(Boolean);
+  const manual = ($("#dir")?.value || "").split(/[\n;]+/).map((s) => s.trim().replace(/^"|"$/g, "")).filter(Boolean);
+  return [...new Set([...picked, ...manual])];
+}
+
+function driveCard(d) {
+  const libCbs = d.libraries.map((lib) => {
+    const cb = h("input", { type: "checkbox", class: "libcb", "data-path": lib.path });
+    cb.addEventListener("change", syncDriveChecks);
+    return h("label", { class: "libitem" }, [cb, h("span", { text: lib.name })]);
+  });
+  const driveCb = h("input", { type: "checkbox", class: "drivecb" });
+  driveCb.addEventListener("change", () => {
+    libCbs.forEach((l) => { l.querySelector("input").checked = driveCb.checked; });
+  });
+  const n = d.libraries.length;
+  return h("div", { class: "drivecard" }, [
+    h("label", { class: "drivehdr" }, [
+      driveCb,
+      h("strong", { text: `${d.drive}:` }),
+      h("span", { class: "muted", text: ` ${n} librar${n === 1 ? "y" : "ies"}` }),
+    ]),
+    h("div", { class: "libs" }, libCbs),
+  ]);
+}
+
+// keep each drive's master checkbox in sync with its library checkboxes
+function syncDriveChecks() {
+  document.querySelectorAll(".drivecard").forEach((card) => {
+    const libs = [...card.querySelectorAll("input.libcb")];
+    const master = card.querySelector("input.drivecb");
+    const on = libs.filter((c) => c.checked).length;
+    master.checked = on === libs.length && libs.length > 0;
+    master.indeterminate = on > 0 && on < libs.length;
+  });
+}
+
+async function loadDrives() {
+  const box = $("#drivepick");
+  let drives = [];
+  try {
+    const r = await fetch("/api/dedupe/drives");
+    drives = (await r.json()).drives || [];
+  } catch (e) {
+    box.replaceChildren(h("span", { class: "status", text: "Could not detect drives — paste paths below." }));
+    return;
+  }
+  drives = drives.filter((d) => d.libraries.length);
+  if (!drives.length) {
+    box.replaceChildren(h("span", { class: "status", text: "No TV/Movie library folders found — paste paths below." }));
+    return;
+  }
+  const selAll = h("button", { class: "mini ghost", type: "button" });
+  selAll.textContent = "Select all";
+  selAll.addEventListener("click", () => {
+    box.querySelectorAll("input[type=checkbox]").forEach((c) => { c.checked = true; });
+    syncDriveChecks();
+  });
+  box.replaceChildren(
+    h("div", { class: "pickhead" }, [
+      h("strong", { text: "Pick drives / libraries to compare:" }), selAll,
+    ]),
+    h("div", { class: "drivegrid" }, drives.map(driveCard)),
+  );
+}
+
 /* ---- scan ---- */
 $("#scan").addEventListener("click", async () => {
-  const directory = $("#dir").value.trim();
-  if (!directory) { setStatus("Enter at least one folder."); return; }
+  const paths = selectedPaths();
+  if (!paths.length) { setStatus("Pick at least one drive or library above (or paste a path)."); return; }
   setStatus("Scanning for duplicates… (walks every drive — can take a minute)", true);
-  const { ok, data } = await postJSON("/api/dedupe/scan", { directory });
+  const { ok, data } = await postJSON("/api/dedupe/scan", { directory: paths.join("\n") });
   if (!ok) { setStatus(data.error || "Scan failed."); return; }
   GROUPS = data.groups.map((g) => ({ ...g, _keep: g.suggested_keep, _approved: false }));
   renderSummary(data.summary);
@@ -297,3 +367,4 @@ $("#empty").addEventListener("click", async () => {
 });
 
 refreshQuarantine(window.QUARANTINE);
+loadDrives();

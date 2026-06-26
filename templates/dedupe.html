@@ -15,7 +15,15 @@
   </header>
 
   <section class="bar">
-    <textarea id="dir" rows="3" placeholder="Library folders to compare — one per line:&#10;P:\TV Shows&#10;R:\TV Shows&#10;Q:\TV Shows&#10;N:\TV Shows"></textarea>
+    <div class="picker">
+      <div id="drivepick" class="drivepick">
+        <span class="status">Detecting drives…</span>
+      </div>
+      <details class="advanced">
+        <summary>or paste folder paths manually</summary>
+        <textarea id="dir" rows="3" placeholder="Library folders to compare — one per line:&#10;P:\TV Shows&#10;R:\TV Shows&#10;Q:\TV Shows&#10;N:\TV Shows"></textarea>
+      </details>
+    </div>
     <div class="bar-side">
       <button id="scan">Find duplicates</button>
     </div>

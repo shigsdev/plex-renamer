@@ -141,6 +141,33 @@ def test_movies_grouped_by_title_year_not_fake_episode(tmp_path, monkeypatch):
     assert d["kind"] == "movie" and d["label"] == "(1999)" and d["year"] == 1999
 
 
+def test_libraries_in_finds_media_folders_only(tmp_path):
+    for name in ("TV Shows", "TV Shows Matteo", "Movies", "Movies Matteo"):
+        os.makedirs(tmp_path / name)
+    for noise in ("Downloads", "System Volume Information"):
+        os.makedirs(tmp_path / noise)
+    (tmp_path / "loose.txt").write_text("x")          # a file, not a dir
+    libs = dedupe._libraries_in(str(tmp_path))
+    names = [lib["name"] for lib in libs]
+    assert names == ["Movies", "Movies Matteo", "TV Shows", "TV Shows Matteo"]
+    assert all(os.path.isdir(lib["path"]) for lib in libs)
+
+
+def test_libraries_in_unreadable_root_returns_empty():
+    assert dedupe._libraries_in("Z:/definitely/not/here") == []
+
+
+def test_list_drive_libraries_shape(tmp_path, monkeypatch):
+    os.makedirs(tmp_path / "TV Shows")
+    monkeypatch.setattr(dedupe, "_drive_letters", lambda: ["P"])
+    monkeypatch.setattr(os.path, "isdir", lambda p: p == "P:\\" or os.path.exists(p))
+    monkeypatch.setattr(dedupe, "_libraries_in",
+                        lambda root: [{"name": "TV Shows", "path": "P:\\TV Shows"}])
+    out = dedupe.list_drive_libraries()
+    assert out == [{"drive": "P", "root": "P:\\",
+                    "libraries": [{"name": "TV Shows", "path": "P:\\TV Shows"}]}]
+
+
 def test_multi_part_movie_not_a_self_duplicate(tmp_path, monkeypatch):
     p = str(tmp_path / "P" / "Movies")
     q = str(tmp_path / "Q" / "Movies")

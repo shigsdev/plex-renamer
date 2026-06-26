@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import re
+import string
 import sys
 from dataclasses import asdict, dataclass
 
@@ -43,6 +44,52 @@ def _resolution(name: str) -> int:
 def _drive_of(path: str) -> str:
     d = os.path.splitdrive(path)[0]
     return d.rstrip(":").upper() or "?"
+
+
+def _drive_letters() -> list[str]:
+    """Present drive letters. Uses the Windows logical-drive bitmask when
+    available (fast, lists only mounted drives — no hang on unmapped letters);
+    falls back to probing A:..Z: so it degrades gracefully off-Windows / in CI."""
+    try:
+        import ctypes
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()   # type: ignore[attr-defined]
+        return [chr(ord("A") + i) for i in range(26) if bitmask & (1 << i)]
+    except (AttributeError, OSError, ValueError):
+        return [d for d in string.ascii_uppercase if os.path.isdir(f"{d}:\\")]
+
+
+def _libraries_in(root: str) -> list[dict]:
+    """Immediate sub-folders of ``root`` that look like a media library
+    ("TV Shows", "TV Shows Matteo", "Movies", "Anime", ...). These — not bare
+    drive roots — are the scan targets, because cross-drive matching keys on the
+    library folder name (P:\\TV Shows must match R:\\TV Shows)."""
+    libs = []
+    try:
+        with os.scandir(root) as it:
+            for e in it:
+                try:
+                    if e.is_dir() and scanner._LIBRARY_FOLDER_RE.match(e.name):
+                        libs.append({"name": e.name, "path": e.path})
+                except OSError:
+                    continue
+    except OSError:
+        return []
+    libs.sort(key=lambda x: x["name"].lower())
+    return libs
+
+
+def list_drive_libraries() -> list[dict]:
+    """Enumerate local drives and the media-library folders on each, for the
+    UI's drive picker. Drives with no recognized library folder are still
+    returned (with an empty ``libraries`` list) so the caller can decide whether
+    to show them."""
+    out = []
+    for letter in _drive_letters():
+        root = f"{letter}:\\"
+        if not os.path.isdir(root):
+            continue
+        out.append({"drive": letter, "root": root, "libraries": _libraries_in(root)})
+    return out
 
 
 def episode_key(stem: str, parent: str, show: str) -> tuple[int, int] | None:

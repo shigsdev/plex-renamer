@@ -154,6 +154,13 @@ def api_undo():
                    log=os.path.basename(log))
 
 
+@app.get("/api/dedupe/drives")
+def api_dedupe_drives():
+    """List local drives + the media-library folders on each, so the dedupe
+    page can offer a click-to-select picker instead of typing paths."""
+    return jsonify(drives=dedupe.list_drive_libraries())
+
+
 @app.post("/api/dedupe/scan")
 def api_dedupe_scan():
     """Find cross-drive duplicate episodes. Read-only."""

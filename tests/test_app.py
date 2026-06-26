@@ -199,6 +199,18 @@ def _two_drive_dup(tmp_path):
     return raw
 
 
+def test_dedupe_drives_lists_libraries(client, monkeypatch):
+    monkeypatch.setattr(dedupe, "list_drive_libraries", lambda: [
+        {"drive": "P", "root": "P:\\",
+         "libraries": [{"name": "TV Shows", "path": "P:\\TV Shows"},
+                       {"name": "Movies", "path": "P:\\Movies"}]},
+        {"drive": "C", "root": "C:\\", "libraries": []},
+    ])
+    data = client.get("/api/dedupe/drives").get_json()
+    assert [d["drive"] for d in data["drives"]] == ["P", "C"]
+    assert data["drives"][0]["libraries"][0]["path"] == "P:\\TV Shows"
+
+
 def test_dedupe_scan_finds_cross_drive_group(client, tmp_path, monkeypatch):
     raw = _two_drive_dup(tmp_path)
     monkeypatch.setattr(dedupe, "_drive_of",
