@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import string
+import subprocess
 import sys
 from dataclasses import asdict, dataclass
 
@@ -39,6 +41,41 @@ def _resolution(name: str) -> int:
         if pat.search(name):
             return rank
     return 0
+
+
+# ffprobe is optional: when the filename carries no resolution token we fall back
+# to reading the real video height — but only if ffprobe is installed. Located
+# once at import; None means "not available, stay name-based".
+_FFPROBE = shutil.which("ffprobe")
+
+
+def _resolution_from_file(path: str) -> int:
+    """Real video height via ffprobe, bucketed to a standard label (1080, 2160,
+    …). Returns 0 when ffprobe is unavailable or the probe fails. Used ONLY as a
+    fallback for files whose name has no resolution token, and ONLY on files that
+    are already in a duplicate group, so the cost is bounded."""
+    if not _FFPROBE:
+        return 0
+    try:
+        proc = subprocess.run(
+            [_FFPROBE, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=height", "-of", "csv=p=0", path],
+            capture_output=True, text=True, timeout=20)
+        height = int((proc.stdout or "").strip().splitlines()[0])
+    except (ValueError, IndexError, OSError, subprocess.SubprocessError):
+        return 0
+    for thresh, label in ((1800, 2160), (1300, 1440), (900, 1080),
+                          (650, 720), (520, 576), (380, 480)):
+        if height >= thresh:
+            return label
+    return height if height > 0 else 0
+
+
+def _fill_unknown_resolutions(copies: list[Copy]) -> None:
+    """Try ffprobe on any copy whose resolution couldn't be read from its name."""
+    for c in copies:
+        if c.resolution == 0:
+            c.resolution = _resolution_from_file(c.path)
 
 
 def _drive_of(path: str) -> str:
@@ -156,11 +193,22 @@ class DupGroup:
 
 
 def _suggest_keep(copies: list[Copy]) -> int:
-    """Index of the copy to pre-select: highest resolution, tie-break largest."""
+    """Index of the copy to pre-select.
+
+    Normally: highest resolution, tie-break largest file. BUT if any copy's
+    resolution is unknown (no name token and ffprobe couldn't read it), the
+    resolution signal is unreliable for the group, so rank by SIZE first
+    (tie-break resolution) — keep the largest, the safer bet against discarding
+    the better encode (e.g. a 3 GB file whose name omits "1080p" beating a 1 GB
+    file that happens to spell it out)."""
+    unknown = any(c.resolution == 0 for c in copies)
+
+    def score(c: Copy) -> tuple[int, int]:
+        return (c.size, c.resolution) if unknown else (c.resolution, c.size)
+
     best = 0
     for i, c in enumerate(copies):
-        b = copies[best]
-        if (c.resolution, c.size) > (b.resolution, b.size):
+        if score(c) > score(copies[best]):
             best = i
     return best
 
@@ -234,6 +282,7 @@ def find_duplicates(roots: list[str], *, cross_drive_only: bool = True) -> list[
         if cross_drive_only and len({c.drive for c in copies}) < 2:
             continue
         copies.sort(key=lambda c: (c.drive, c.filename))   # stable display order
+        _fill_unknown_resolutions(copies)   # ffprobe fallback, dup-group members only
         kind, lib_disp, show_disp, season, episode, year = display[key]
         out.append(DupGroup(
             kind=kind, library=lib_disp, show=show_disp,

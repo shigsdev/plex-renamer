@@ -84,6 +84,18 @@ mocked).
 - Renamer core: parser, web UI (scan/approve/bulk/streamed-apply/undo), CLI,
   TMDB+TheTVDB daily lookup, multi-folder scan, append-only audit log.
 - CI: GitHub Actions (ruff + pytest + coverage) on py3.11–3.13.
+- **Dedupe: safer keeper when resolution is unknown (2026-06-25).** The keeper
+  suggestion used to rank resolution-first, so a copy whose name omits "1080p"
+  (resolution `?`) lost to a smaller copy that spelled it out — e.g. a 3 GB
+  `The Crown_S01E04_Act of God.mp4` was marked for removal in favor of a 1 GB
+  `...S01E04.1080p.H265.mkv`. Now: if any copy in a group has unknown resolution,
+  `_suggest_keep` ranks by **size first** (keep the largest — the safer bet
+  against discarding the better encode). Added an **ffprobe fallback**
+  (`_resolution_from_file`) that reads the real video height when the name has no
+  token — runs only on actual duplicate-group members, and only if ffprobe is
+  installed (gracefully no-ops otherwise; the size-first rule still protects the
+  larger file). Note: ffprobe is NOT currently installed on the user's machine,
+  so `?` stays until they install ffmpeg/ffprobe — the keeper fix works regardless.
 - **Dedupe: drive picker (2026-06-25).** `/dedupe` now auto-detects local drives
   (`GET /api/dedupe/drives` → `dedupe.list_drive_libraries`, Windows logical-drive
   bitmask with an A:..Z: fallback) and the media-library folders on each, and

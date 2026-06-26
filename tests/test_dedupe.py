@@ -45,6 +45,63 @@ def test_suggest_keep_tie_break_on_size():
     assert dedupe._suggest_keep(copies) == 1
 
 
+def test_suggest_keep_size_first_when_resolution_unknown():
+    # The Crown case: a 3 GB copy with no res token must NOT be discarded for a
+    # 1 GB copy that merely spells out "1080p".
+    copies = [
+        dedupe.Copy("/n/a.mp4", "N", "a.mp4", size=3_000_000_000, resolution=0),
+        dedupe.Copy("/q/b.mkv", "Q", "b.mkv", size=1_000_000_000, resolution=1080),
+    ]
+    assert dedupe._suggest_keep(copies) == 0   # keep the larger, unknown-res copy
+
+
+# ---- ffprobe resolution fallback ------------------------------------------
+
+class _FakeProc:
+    def __init__(self, out):
+        self.stdout = out
+
+
+def test_resolution_from_file_parses_and_buckets(monkeypatch):
+    monkeypatch.setattr(dedupe, "_FFPROBE", "ffprobe")
+    monkeypatch.setattr(dedupe.subprocess, "run", lambda *a, **k: _FakeProc("2160\n"))
+    assert dedupe._resolution_from_file("x.mkv") == 2160
+    monkeypatch.setattr(dedupe.subprocess, "run", lambda *a, **k: _FakeProc("1088\n"))
+    assert dedupe._resolution_from_file("x.mkv") == 1080   # odd height -> standard bucket
+
+
+def test_resolution_from_file_no_ffprobe_returns_zero(monkeypatch):
+    monkeypatch.setattr(dedupe, "_FFPROBE", None)
+    assert dedupe._resolution_from_file("x.mkv") == 0
+
+
+def test_resolution_from_file_probe_failure_returns_zero(monkeypatch):
+    monkeypatch.setattr(dedupe, "_FFPROBE", "ffprobe")
+
+    def boom(*a, **k):
+        raise OSError("ffprobe blew up")
+
+    monkeypatch.setattr(dedupe.subprocess, "run", boom)
+    assert dedupe._resolution_from_file("x.mkv") == 0
+
+
+def test_find_duplicates_ffprobe_fills_unknown_resolution(tmp_path, monkeypatch):
+    p = str(tmp_path / "P" / "TV Shows")
+    q = str(tmp_path / "Q" / "TV Shows")
+    _make(p, "The Crown", 1, "The Crown_S01E04_Act of God.mp4")   # no res token
+    _make(q, "The Crown", 1, "The.Crown.S01E04.1080p.mkv")        # 1080 from name
+    monkeypatch.setattr(dedupe, "_drive_of",
+                        lambda path: "P" if f"{os.sep}P{os.sep}" in path else "Q")
+    # pretend ffprobe reads the tokenless .mp4 as 2160p
+    monkeypatch.setattr(dedupe, "_resolution_from_file",
+                        lambda path: 2160 if path.endswith(".mp4") else 0)
+    g = dedupe.find_duplicates([p, q], cross_drive_only=True)[0]
+    res = {c.filename: c.resolution for c in g.copies}
+    assert res["The Crown_S01E04_Act of God.mp4"] == 2160          # filled by ffprobe
+    # now 2160 beats the 1080p copy -> the mp4 is the suggested keeper
+    assert g.copies[g.suggested_keep].filename == "The Crown_S01E04_Act of God.mp4"
+
+
 # ---- grouping -------------------------------------------------------------
 
 def _make(root, show, season, fname):
