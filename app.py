@@ -27,6 +27,7 @@ import apply as apply_mod
 import dedupe
 import logs as logs_mod
 import metadata
+import music
 import quarantine
 import scanner
 
@@ -46,6 +47,44 @@ def index():
 @app.get("/dedupe")
 def dedupe_page():
     return render_template("dedupe.html", quarantine=quarantine.quarantine_stats())
+
+
+@app.get("/music")
+def music_page():
+    return render_template("music.html", quarantine=quarantine.quarantine_stats())
+
+
+@app.post("/api/music/scan")
+def api_music_scan():
+    """Stream tag-read progress, then a final payload of duplicate-song groups.
+    Removal reuses the shared /api/dedupe/{remove,undo,empty} quarantine flow."""
+    data = request.get_json(force=True)
+    root = (data.get("directory") or "").strip().strip('"')
+    if not root or not os.path.isdir(root):
+        return jsonify(error=f"Not a directory: {root!r}"), 400
+    files = music.iter_audio_files(root)
+
+    @stream_with_context
+    def generate():
+        records = []
+        total = len(files)
+        for i, path in enumerate(files, 1):
+            rec = music.read_record(path, root)
+            if rec:
+                records.append(rec)
+            if i % 150 == 0 or i == total:
+                yield json.dumps({"i": i, "total": total}) + "\n"
+        groups = [g.to_dict() for g in music.build_groups(records)]
+        summary = {
+            "groups": len(groups),
+            "copies": sum(len(g["copies"]) for g in groups),
+            "reclaimable_bytes": sum(g["reclaimable_bytes"] for g in groups),
+            "scanned": total,
+        }
+        yield json.dumps({"done": True, "groups": groups, "summary": summary,
+                          "quarantine": quarantine.quarantine_stats()}) + "\n"
+
+    return Response(generate(), mimetype="application/x-ndjson")
 
 
 @app.get("/logs")

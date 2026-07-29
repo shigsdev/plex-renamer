@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plex Renamer — Music Duplicates</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>Music Duplicates <span class="nav"><a href="/">← renamer</a> · <a href="/dedupe">video dupes</a> · <a href="/logs">activity log</a></span></h1>
+    <p class="sub">Find duplicate songs in an iTunes / music library by their <strong>tags</strong>
+      (artist + title, confirmed by track length) — so the same song is caught even across
+      different albums, filenames, or formats (mp3 vs m4a). You pick which copy to keep per group;
+      the rest move to a reversible <strong>quarantine</strong>. Undo any time; empty it to free the space.</p>
+  </header>
+
+  <section class="bar">
+    <div class="picker">
+      <input type="text" id="dir" value="C:\Users\higs7\OneDrive\Itunes\Music"
+             placeholder="Music library folder, e.g. C:\Users\you\OneDrive\Itunes\Music">
+    </div>
+    <div class="bar-side">
+      <button id="scan">Find duplicate songs</button>
+    </div>
+    <span id="status" class="status"></span>
+  </section>
+
+  <section id="progress" class="progress hidden">
+    <div class="pbar"><div id="pfill" class="pfill"></div></div>
+    <div id="ptext" class="ptext"></div>
+  </section>
+
+  <section id="summary" class="summary hidden"></section>
+
+  <section id="controls" class="controls hidden">
+    <strong>Bulk:</strong>
+    <button data-bulk="suggested">Approve all (keep suggested)</button>
+    <button data-bulk="clear" class="ghost">Clear approvals</button>
+    <span class="spacer"></span>
+    <button id="remove" class="primary">Quarantine approved (<span id="approvedCount">0</span> files, <span id="approvedSize">0</span>)</button>
+  </section>
+
+  <section id="quarbar" class="controls quarbar">
+    <span id="quarstatus" class="status"></span>
+    <span class="spacer"></span>
+    <button id="undo" class="ghost">Undo last removal</button>
+    <button id="empty" class="danger">Empty quarantine (free space, permanent)</button>
+  </section>
+
+  <section id="banner" class="banner hidden"></section>
+
+  <section id="results"></section>
+
+  <script>window.QUARANTINE = {{ quarantine | tojson }};</script>
+  <script src="{{ url_for('static', filename='music.js') }}"></script>
+</body>
+</html>

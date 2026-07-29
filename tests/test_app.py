@@ -186,6 +186,41 @@ def test_dedupe_page_renders(client):
     assert "window.QUARANTINE" in html
 
 
+def test_music_page_renders(client):
+    html = client.get("/music").get_data(as_text=True)
+    assert "Music Duplicates" in html
+    assert "window.QUARANTINE" in html
+
+
+def test_music_scan_streams_progress_then_groups(client, tmp_path, monkeypatch):
+    import music
+    d = tmp_path / "Music" / "Artist" / "Album"
+    d.mkdir(parents=True)
+    (d / "song.m4a").write_bytes(b"x" * 20)
+    (d / "song.mp3").write_bytes(b"x" * 10)
+
+    def fake_read(path, root):
+        fmt = os.path.splitext(path)[1].lstrip(".")
+        return music.Record("artist", "song",
+                            "Artist", "Song",
+                            music.SongCopy(path, os.path.basename(path), "Artist/Album",
+                                           fmt, 256 if fmt == "m4a" else 128, 20, 200.0))
+
+    monkeypatch.setattr(music, "read_record", fake_read)
+    resp = client.post("/api/music/scan", json={"directory": str(tmp_path / "Music")})
+    assert resp.mimetype == "application/x-ndjson"
+    events = [json.loads(x) for x in resp.get_data(as_text=True).splitlines() if x.strip()]
+    final = [e for e in events if e.get("done")][0]
+    assert final["summary"]["groups"] == 1
+    g = final["groups"][0]
+    assert g["copies"][g["suggested_keep"]]["fmt"] == "m4a"      # m4a preferred
+
+
+def test_music_scan_rejects_bad_dir(client):
+    r = client.post("/api/music/scan", json={"directory": "Z:/nope/nope"})
+    assert r.status_code == 400
+
+
 # ---- dedupe scan + remove -------------------------------------------------
 
 def _two_drive_dup(tmp_path):

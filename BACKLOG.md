@@ -79,6 +79,27 @@ action, dry-run default, complete undo log. Same gates as the renamer (ruff +
 pytest, tests for the grouping logic and the Recycle-Bin move path with `send2trash`
 mocked).
 
+## Built — music (iTunes) duplicate cleanup
+
+### Music dedupe by tags  *(requested + built 2026-06-26)*
+
+**SHIPPED:** `music.py` + `/music` page + `/api/music/scan` (streamed
+tag-read progress → duplicate-song groups). Removal reuses the shared
+`quarantine.py` flow (`/api/dedupe/{remove,undo,empty}`) — same reversible
+move + undo as the video deduper. Reads tags with **mutagen** (added to
+requirements.txt); real scan of the user's iTunes `Music` (6,511 files,
+~14.5s) found **1,691 duplicate songs, ~12 GB reclaimable**.
+
+**Matching:** WHOLE-LIBRARY by `(artist, title)` normalized + **duration**
+proximity (±3s). Duration is the safety net keeping Part 1/Part 2, live vs
+studio, radio vs extended correctly separate. Catches the same recording
+across different albums/compilations, filenames, formats (mp3↔m4a), and
+case — things filename matching misses (e.g. `California Love.mp3` vs
+`2pac - California Love.mp3`). Conservative title normalization (keeps
+"(Radio Edit)" etc.) so it under-matches rather than risk deleting the
+wrong song. Keeper preference: **AAC/m4a first**, then bitrate, then size
+(per user choice). ~19 tests in test_music.py + endpoint tests.
+
 ## Done
 
 - Renamer core: parser, web UI (scan/approve/bulk/streamed-apply/undo), CLI,
