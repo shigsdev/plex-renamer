@@ -183,7 +183,7 @@ def empty_stream(items: list[dict] | None = None):
 
     total = len(entries)
     removed = freed = 0
-    log_ok = {log: True for log in logs}
+    log_ok = dict.fromkeys(logs, True)
     for i, (log, p) in enumerate(entries, 1):
         try:
             os.remove(p["to"])
