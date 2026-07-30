@@ -66,6 +66,31 @@ def test_stats_reflects_quarantine(tmp_path, monkeypatch):
     assert stats["batches"] == 1
 
 
+def test_empty_stream_reports_progress_and_frees(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    a = _mkfile(tmp_path / "show", "a.mkv", "xxx")
+    b = _mkfile(tmp_path / "show", "b.mkv", "xxxx")
+    r, _ = quarantine.quarantine_files([{"path": a, "size": 3}, {"path": b, "size": 4}])
+    dsts = [x.dst for x in r]
+    events = list(quarantine.empty_stream())
+    progress = [e for e in events if not e.get("done")]
+    final = [e for e in events if e.get("done")][0]
+    assert [e["i"] for e in progress] == [1, 2]          # one tick per file
+    assert final["removed"] == 2 and final["freed_bytes"] == 7
+    assert all(not os.path.exists(d) for d in dsts)      # gone for good
+    assert final["quarantine"]["files"] == 0
+
+
+def test_empty_stream_tolerates_already_missing_file(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    a = _mkfile(tmp_path / "show", "a.mkv", "xxx")
+    r, _ = quarantine.quarantine_files([{"path": a, "size": 3}])
+    os.remove(r[0].dst)                                   # vanish out-of-band
+    final = [e for e in quarantine.empty_stream() if e.get("done")][0]
+    assert final["removed"] == 0                          # nothing to delete...
+    assert final["quarantine"]["files"] == 0             # ...but batch is cleared
+
+
 def test_empty_is_permanent(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     a = _mkfile(tmp_path / "show", "a.mkv")

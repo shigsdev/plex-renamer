@@ -102,6 +102,18 @@ wrong song. Keeper preference: **AAC/m4a first**, then bitrate, then size
 
 ## Done
 
+- **Quarantine: fix "Empty does nothing" + slow pages (2026-07-29).** Two
+  problems, both from probing every quarantined file's existence across slow
+  network drives: (1) `quarantine_stats()` did a per-file `os.path.exists` at
+  page render — ~51s to load `/dedupe` / `/music` with a large quarantine;
+  now it counts batch-log entries + recorded sizes (0.01s). (2) `Empty
+  quarantine` was a synchronous request doing the same slow per-file work with
+  NO progress — on a 2,497-file / 3 TB quarantine it ran for minutes and looked
+  frozen ("nothing happens"). Now `empty_stream` streams per-file progress
+  (NDJSON) driving a progress bar on both pages, and tries `os.remove`
+  directly (already-gone files count as freed, no separate `exists` probe).
+  A batch whose files all clear gets its log renamed `.emptied`.
+
 - Renamer core: parser, web UI (scan/approve/bulk/streamed-apply/undo), CLI,
   TMDB+TheTVDB daily lookup, multi-folder scan, append-only audit log.
 - CI: GitHub Actions (ruff + pytest + coverage) on py3.11–3.13.

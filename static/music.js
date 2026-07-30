@@ -279,12 +279,42 @@ $("#undo").addEventListener("click", async () => {
 $("#empty").addEventListener("click", async () => {
   const n = window.QUARANTINE.files || 0;
   if (!confirm(`Permanently delete ${n} quarantined file(s)? This FREES the space and canNOT be undone.`)) return;
+  $("#empty").disabled = true;
+  $("#banner").classList.add("hidden");
   setStatus("Emptying quarantine…", true);
-  const { ok, data } = await postJSON("/api/dedupe/empty", {});
+  showProgress(0, n, `Deleting 0 of ${n}…`);
+
+  let final = null;
+  try {
+    const resp = await fetch("/api/dedupe/empty", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.done) final = ev; else showProgress(ev.i, ev.total, `Deleting ${ev.i} of ${ev.total}…`);
+      }
+    }
+  } catch (e) {
+    setStatus(""); $("#progress").classList.add("hidden");
+    showBanner(`Empty failed: ${e.message}`, "err"); refreshQuarantine(window.QUARANTINE); return;
+  }
+
   setStatus("");
-  if (!ok) { showBanner("Empty failed.", "err"); return; }
-  showBanner(`🗑 Permanently deleted ${data.removed} file(s), freed ${human(data.freed_bytes)}.`, "ok");
-  refreshQuarantine(data.quarantine);
+  $("#progress").classList.add("hidden");
+  if (!final) { showBanner("Empty failed.", "err"); refreshQuarantine(window.QUARANTINE); return; }
+  showBanner(`🗑 Permanently deleted ${final.removed} file(s), freed ${human(final.freed_bytes)}.`, "ok");
+  refreshQuarantine(final.quarantine);
 });
 
 refreshQuarantine(window.QUARANTINE);

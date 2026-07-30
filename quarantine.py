@@ -145,37 +145,75 @@ def undo_last() -> tuple[list[MoveResult], str | None]:
 
 
 def quarantine_stats() -> dict:
-    """How much is sitting in quarantine (across active batches)."""
+    """How much is sitting in quarantine, counted from the active batch logs.
+
+    Counts log ENTRIES (and their recorded sizes) rather than probing each file's
+    existence — a per-file ``os.path.exists`` over quarantine spread across slow
+    network drives made page render take ~50s. Emptying renames a batch log to
+    ``.emptied`` (see ``empty_stream``), so a cleared batch drops out here
+    automatically."""
     files = bytes_ = 0
-    for log in _active_logs():
-        with open(log, encoding="utf-8") as fh:
-            for p in json.load(fh):
-                if os.path.exists(p["to"]):
+    logs = _active_logs()
+    for log in logs:
+        try:
+            with open(log, encoding="utf-8") as fh:
+                for p in json.load(fh):
                     files += 1
                     bytes_ += p.get("size") or 0
-    return {"files": files, "bytes": bytes_, "batches": len(_active_logs())}
+        except (OSError, json.JSONDecodeError):
+            continue
+    return {"files": files, "bytes": bytes_, "batches": len(logs)}
+
+
+def empty_stream(items: list[dict] | None = None):
+    """Generator: permanently delete quarantined files one at a time, yielding
+    per-file progress then a final summary. ``os.remove`` is tried directly (no
+    ``os.path.exists`` probe first) so it stays responsive over network drives; a
+    file that's already gone counts as freed, not an error. A batch whose files
+    all deleted cleanly has its log renamed ``.emptied`` (no longer undoable)."""
+    logs = _active_logs()
+    entries: list[tuple[str, dict]] = []
+    for log in logs:
+        try:
+            with open(log, encoding="utf-8") as fh:
+                for p in json.load(fh):
+                    entries.append((log, p))
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    total = len(entries)
+    removed = freed = 0
+    log_ok = {log: True for log in logs}
+    for i, (log, p) in enumerate(entries, 1):
+        try:
+            os.remove(p["to"])
+            removed += 1
+            freed += p.get("size") or 0
+        except FileNotFoundError:
+            pass                       # already gone — treat as handled
+        except OSError:
+            log_ok[log] = False
+        yield {"i": i, "total": total}
+
+    for log, ok in log_ok.items():
+        if ok:
+            try:
+                os.rename(log, log + ".emptied")
+            except OSError:
+                pass
+    _cleanup_empty_dirs()
+    yield {"done": True, "removed": removed, "freed_bytes": freed,
+           "quarantine": quarantine_stats()}
 
 
 def empty_quarantine() -> dict:
-    """Permanently delete all quarantined files (the irreversible free-space
-    step). Marks each emptied log so it can no longer be undone."""
-    removed = freed = 0
-    for log in _active_logs():
-        with open(log, encoding="utf-8") as fh:
-            pairs = json.load(fh)
-        ok = True
-        for p in pairs:
-            try:
-                if os.path.exists(p["to"]):
-                    freed += p.get("size") or 0
-                    os.remove(p["to"])
-                    removed += 1
-            except OSError:
-                ok = False
-        if ok:
-            os.rename(log, log + ".emptied")
-    _cleanup_empty_dirs()
-    return {"removed": removed, "freed_bytes": freed}
+    """Non-streaming convenience (used by tests/CLI): run ``empty_stream`` to
+    completion and return its final ``{removed, freed_bytes}`` summary."""
+    final = {"removed": 0, "freed_bytes": 0}
+    for ev in empty_stream():
+        if ev.get("done"):
+            final = {"removed": ev["removed"], "freed_bytes": ev["freed_bytes"]}
+    return final
 
 
 def _cleanup_empty_dirs() -> None:

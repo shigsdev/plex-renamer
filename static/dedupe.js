@@ -265,11 +265,11 @@ function updateApproved() {
 }
 
 /* ---- remove (streamed) ---- */
-function showProgress(i, total) {
+function showProgress(i, total, verb = "Quarantining") {
   $("#progress").classList.remove("hidden");
   const pct = total ? Math.round((i / total) * 100) : 0;
   $("#pfill").style.width = pct + "%";
-  $("#ptext").textContent = `Quarantining ${i} of ${total}… (${pct}%)`;
+  $("#ptext").textContent = `${verb} ${i} of ${total}… (${pct}%)`;
 }
 
 function showBanner(text, kind) {
@@ -360,13 +360,45 @@ $("#undo").addEventListener("click", async () => {
 $("#empty").addEventListener("click", async () => {
   const n = window.QUARANTINE.files || 0;
   if (!confirm(`Permanently delete ${n} quarantined file(s)? This FREES the space and canNOT be undone.`)) return;
+  $("#empty").disabled = true;
+  $("#banner").classList.add("hidden");
   setStatus("Emptying quarantine…", true);
-  const { ok, data } = await postJSON("/api/dedupe/empty", {});
+  showProgress(0, n, "Deleting");
+  const final = await streamEmpty();
   setStatus("");
-  if (!ok) { showBanner("Empty failed.", "err"); return; }
-  showBanner(`🗑 Permanently deleted ${data.removed} file(s), freed ${human(data.freed_bytes)}.`, "ok");
-  refreshQuarantine(data.quarantine);
+  $("#progress").classList.add("hidden");
+  if (!final) { showBanner("Empty failed.", "err"); refreshQuarantine(window.QUARANTINE); return; }
+  showBanner(`🗑 Permanently deleted ${final.removed} file(s), freed ${human(final.freed_bytes)}.`, "ok");
+  refreshQuarantine(final.quarantine);
 });
+
+// Stream /api/dedupe/empty, driving the progress bar; returns the final event.
+async function streamEmpty() {
+  try {
+    const resp = await fetch("/api/dedupe/empty", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "", final = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.done) final = ev; else showProgress(ev.i, ev.total, "Deleting");
+      }
+    }
+    return final;
+  } catch (e) {
+    return null;
+  }
+}
 
 refreshQuarantine(window.QUARANTINE);
 loadDrives();

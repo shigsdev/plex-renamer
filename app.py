@@ -251,10 +251,15 @@ def api_dedupe_undo():
 
 @app.post("/api/dedupe/empty")
 def api_dedupe_empty():
-    """Permanently delete everything in quarantine (frees space, irreversible)."""
-    result = quarantine.empty_quarantine()
-    result["quarantine"] = quarantine.quarantine_stats()
-    return jsonify(result)
+    """Stream permanent-delete progress (frees space, irreversible). Streamed so
+    emptying a large quarantine on slow network drives shows a live count instead
+    of appearing frozen."""
+    @stream_with_context
+    def generate():
+        for event in quarantine.empty_stream():
+            yield json.dumps(event) + "\n"
+
+    return Response(generate(), mimetype="application/x-ndjson")
 
 
 if __name__ == "__main__":

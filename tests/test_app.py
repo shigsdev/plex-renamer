@@ -298,3 +298,20 @@ def test_dedupe_remove_streams_and_trashes(client, tmp_path, monkeypatch):
     assert u.status_code == 200
     assert u.get_json()["restored"] == 1
     assert os.path.exists(items[0]["path"])
+
+
+def test_dedupe_empty_streams_progress(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(quarantine, "UNDO_DIR", str(tmp_path / "undo"))
+    monkeypatch.setattr(quarantine, "_quarantine_root", lambda path: str(tmp_path / "_q"))
+    src = tmp_path / "show" / "dup.mkv"
+    src.parent.mkdir(parents=True)
+    src.write_text("xxxx")
+    quarantine.quarantine_files([{"path": str(src), "size": 4}])
+
+    resp = client.post("/api/dedupe/empty", json={})
+    assert resp.mimetype == "application/x-ndjson"
+    events = _stream_lines(resp)
+    final = [e for e in events if e.get("done")][0]
+    assert final["removed"] == 1 and final["freed_bytes"] == 4
+    assert final["quarantine"]["files"] == 0
+    assert [e["i"] for e in events if not e.get("done")] == [1]
