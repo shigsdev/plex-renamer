@@ -11,8 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import music  # noqa: E402
 
 
-def _copy(path, fmt, *, bitrate=128, size=1000, duration=200.0, folder="Artist/Album"):
-    return music.SongCopy(path, os.path.basename(path), folder, fmt, bitrate, size, duration)
+def _copy(path, fmt, *, bitrate=128, size=1000, duration=200.0, folder="Artist/Album",
+          source="mine"):
+    return music.SongCopy(path, os.path.basename(path), folder, fmt, bitrate, size,
+                          duration, source)
 
 
 def _rec(artist, title, copy):
@@ -94,6 +96,18 @@ def test_keeper_falls_back_to_bitrate_then_size():
     assert music._suggest_keep(copies) == 1
 
 
+def test_source_mix_classifies_group():
+    def grp(*sources):
+        recs = [_rec("A", "Song", _copy(f"/m/{i}.mp3", "mp3", duration=200.0, source=s))
+                for i, s in enumerate(sources)]
+        return music.build_groups(recs)[0]
+    assert grp("itunes", "itunes").source_mix == "itunes"
+    assert grp("mine", "mine").source_mix == "mine"
+    assert grp("itunes", "mine").source_mix == "mixed"
+    assert grp("itunes", "mine").to_dict()["source_mix"] == "mixed"
+    assert grp("itunes", "mine").to_dict()["copies"][0]["source"] in ("itunes", "mine")
+
+
 def test_group_to_dict_shape():
     recs = [
         _rec("A", "Song", _copy("/m/a.m4a", "m4a", bitrate=256, size=8000, duration=185.0)),
@@ -132,6 +146,7 @@ def test_read_record_uses_tags(tmp_path, monkeypatch):
     assert r.artist == "The Artist" and r.title == "The Song"
     assert r.copy.bitrate == 256 and r.copy.duration == 183.4 and r.copy.size == 500
     assert r.copy.fmt == "mp3"
+    assert r.copy.source == "mine"        # no iTunes markers
 
 
 def test_read_record_falls_back_to_folder_and_filename(tmp_path, monkeypatch):
@@ -142,3 +157,38 @@ def test_read_record_falls_back_to_folder_and_filename(tmp_path, monkeypatch):
     r = music.read_record(str(f), str(tmp_path))
     assert r.artist == "Some Artist"      # from the top folder
     assert r.title == "mystery"           # from the filename stem
+    assert r.copy.source == "mine"
+
+
+# ---- source detection (iTunes vs the user's own file) ---------------------
+
+def test_detect_source_itunes_soundcheck():
+    mf = _FakeMF({"TIT2": ["x"], "----:com.apple.iTunes:iTunNORM": [b" 000 "]}, 200, 256000)
+    assert music._detect_source(mf) == "itunes"
+
+
+def test_detect_source_itunes_purchase_atom():
+    mf = _FakeMF({"\xa9nam": ["x"], "apID": ["buyer@example.com"]}, 200, 256000)
+    assert music._detect_source(mf) == "itunes"
+
+
+def test_detect_source_itunes_encoder():
+    mf = _FakeMF({"\xa9too": ["iTunes 12.10.11.2"]}, 200, 256000)
+    assert music._detect_source(mf) == "itunes"
+
+
+def test_detect_source_mine_when_no_markers():
+    mf = _FakeMF({"TPE1": ["Artist"], "TIT2": ["Song"], "TSSE": ["LAME3.99"]}, 200, 320000)
+    assert music._detect_source(mf) == "mine"
+
+
+def test_read_record_marks_itunes_file(tmp_path, monkeypatch):
+    f = tmp_path / "Artist" / "Album" / "06 Beautiful.m4a"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(b"x" * 900)
+    monkeypatch.setattr(music.mutagen, "File",
+                        lambda *a, **k: _FakeMF({"\xa9nam": ["Beautiful"], "\xa9ART": ["Armin"],
+                                                 "iTunSMPB": [" 00000000 "]}, 285.3, 256000))
+    r = music.read_record(str(f), str(tmp_path))
+    assert r.artist == "Armin" and r.title == "Beautiful"
+    assert r.copy.source == "itunes"

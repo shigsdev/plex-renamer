@@ -114,6 +114,15 @@ th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .copyrow { display: flex; gap: 10px; align-items: center; padding: 3px 0 3px 22px; cursor: pointer; }
 .copyrow .drive { font-weight: 700; color: var(--accent); width: 34px; }
 .copyrow .fmt { font-weight: 700; color: var(--accent); width: 44px; text-transform: uppercase; font-size: 11px; }
+/* source-of-file badges (music dupes): iTunes vs the user's own merged-in files */
+.srcbadge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.03em; width: 52px; text-align: center; }
+.srcbadge.itunes { background: var(--date); color: #fff; }        /* blue */
+.srcbadge.mine { background: var(--medium); color: #fff; }        /* amber */
+.grouptag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
+.grouptag.itunes { background: var(--date); color: #fff; }
+.grouptag.mine { background: var(--medium); color: #fff; }
+.grouptag.mixed { background: var(--guess); color: #fff; }        /* the interesting ones */
 .copyrow .res { width: 52px; color: var(--muted); }
 .copyrow .size { width: 64px; text-align: right; color: var(--muted); }
 .copyrow .fname { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--txt); overflow-wrap: anywhere; }

@@ -102,6 +102,19 @@ wrong song. Keeper preference: **AAC/m4a first**, then bitrate, then size
 
 ## Done
 
+- **Music dupes: mark iTunes vs the user's own merged-in files (2026-07-30).**
+  The user merged their personal music INTO the iTunes dir, so folder/filename
+  can't tell them apart (iTunes organizes everything it imports). Signal is in
+  the TAGS: `music._detect_source` flags a copy as **iTunes** if it has
+  `iTunNORM` (Sound Check), `iTunSMPB` (gapless), an iTunes Store purchase atom
+  (`apID`/`cnID`/`purd`/…), or encoder=iTunes — essentially every `.m4a`;
+  otherwise **mine** (the downloaded `.mp3`/`.aif`/`.wav`). Library survey: 3,849
+  iTunNORM, 2,980 purchase atoms; 3,765/3,768 m4a are iTunes, 2,596/2,695 mp3 are
+  mine. Of 1,691 dup groups: 918 all-mine, 651 all-iTunes, 122 mixed. `SongCopy`
+  gains `source`; `SongGroup.source_mix` = itunes|mine|mixed. UI shows a per-copy
+  iTunes/Yours badge + a group tag + summary counts. `read_record` now does a
+  full mutagen load (not easy) to read the raw atoms.
+
 - **Quarantine: fix "Empty does nothing" + slow pages (2026-07-29).** Two
   problems, both from probing every quarantined file's existence across slow
   network drives: (1) `quarantine_stats()` did a per-file `os.path.exists` at

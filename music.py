@@ -41,6 +41,47 @@ _DUR_TOLERANCE = 3.0
 
 _NORM_RE = re.compile(r"[^a-z0-9]+")
 
+# Tag keys per container (ID3 / MP4 / Vorbis), plus lowercase fallbacks for
+# simple mocks. First match wins.
+_ARTIST_KEYS = ("TPE1", "\xa9ART", "ARTIST", "artist", "TPE2", "aART", "albumartist")
+_TITLE_KEYS = ("TIT2", "\xa9nam", "TITLE", "title")
+# iTunes Store purchase atoms — their mere presence means the file came from
+# iTunes (bought or matched), never from a plain web download.
+_ITUNES_ATOMS = {"apid", "cnid", "purd", "atid", "plid", "geid", "sfid"}
+
+SOURCE_ITUNES = "itunes"
+SOURCE_MINE = "mine"
+
+
+def _tag(mf, keys) -> str:
+    for k in keys:
+        if k in mf:
+            v = mf[k]
+            if isinstance(v, list):
+                v = v[0] if v else None
+            if v not in (None, ""):
+                return str(v).strip()
+    return ""
+
+
+def _detect_source(mf) -> str:
+    """Classify a file as iTunes-managed vs the user's own merged-in file.
+
+    iTunes stamps files it imports/rips with Sound Check (``iTunNORM``) and
+    gapless (``iTunSMPB``) atoms, sets the encoder to "iTunes", and iTunes Store
+    purchases carry account/content atoms (``apID``/``cnID``/``purd``/…). Plain
+    downloaded MP3s carry none of these. Any one marker ⇒ iTunes."""
+    keys = [k.lower() for k in mf.keys()]
+    if any("itunnorm" in k or "itunsmpb" in k for k in keys):
+        return SOURCE_ITUNES
+    if any(k in _ITUNES_ATOMS for k in keys):
+        return SOURCE_ITUNES
+    for k in mf.keys():
+        if k.lower() in ("\xa9too", "tsse") or "tenc" in k.lower():
+            if "itunes" in str(mf[k]).lower():
+                return SOURCE_ITUNES
+    return SOURCE_MINE
+
 
 def _norm(s: str) -> str:
     """Conservative match key: lowercase, non-alphanumeric -> space, collapse.
@@ -49,20 +90,6 @@ def _norm(s: str) -> str:
     those distinguish versions, and under-matching (missing a dup) is safe while
     over-matching (deleting the wrong song) is not."""
     return _NORM_RE.sub(" ", (s or "").lower()).strip()
-
-
-def _first_tag(mf, *keys) -> str:
-    """First non-empty value among ``keys`` from a mutagen easy-tags mapping."""
-    for key in keys:
-        try:
-            v = mf.get(key)
-        except Exception:
-            v = None
-        if isinstance(v, list):
-            v = v[0] if v else None
-        if v:
-            return str(v).strip()
-    return ""
 
 
 @dataclass
@@ -74,6 +101,7 @@ class SongCopy:
     bitrate: int         # kbps, 0 = unknown
     size: int
     duration: float      # seconds
+    source: str = SOURCE_MINE   # "itunes" | "mine"
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -103,6 +131,17 @@ class SongGroup:
     def reclaimable_bytes(self) -> int:
         return sum(c.size for i, c in enumerate(self.copies) if i != self.suggested_keep)
 
+    @property
+    def source_mix(self) -> str:
+        """'itunes' if every copy is iTunes, 'mine' if every copy is the user's,
+        else 'mixed' (an iTunes copy AND a personal copy of the same song)."""
+        srcs = {c.source for c in self.copies}
+        if srcs == {SOURCE_ITUNES}:
+            return "itunes"
+        if srcs == {SOURCE_MINE}:
+            return "mine"
+        return "mixed"
+
     def to_dict(self) -> dict:
         mm, ss = divmod(int(self.duration), 60)
         return {
@@ -111,6 +150,7 @@ class SongGroup:
             "copies": [c.to_dict() for c in self.copies],
             "suggested_keep": self.suggested_keep,
             "reclaimable_bytes": self.reclaimable_bytes,
+            "source_mix": self.source_mix,
         }
 
 
@@ -142,24 +182,25 @@ def read_record(path: str, root: str) -> Record | None:
     fname = os.path.basename(path)
     folder = _folder(root, path)
     try:
-        mf = mutagen.File(path, easy=True)
+        mf = mutagen.File(path)            # full load — need raw atoms for source
     except Exception:
         mf = None
 
     if mf is None:
-        artist, title, dur, br = "", os.path.splitext(fname)[0], 0.0, 0
+        artist, title, dur, br, source = "", os.path.splitext(fname)[0], 0.0, 0, SOURCE_MINE
     else:
-        artist = _first_tag(mf, "artist", "albumartist", "album_artist")
-        title = _first_tag(mf, "title")
+        artist = _tag(mf, _ARTIST_KEYS)
+        title = _tag(mf, _TITLE_KEYS)
         dur = float(getattr(mf.info, "length", 0) or 0)
         br = int(getattr(mf.info, "bitrate", 0) or 0) // 1000
+        source = _detect_source(mf)
 
     if not artist:
         artist = folder.split(os.sep)[0] if folder else ""
     if not title:
         title = os.path.splitext(fname)[0]
 
-    copy = SongCopy(path, fname, folder, ext.lstrip("."), br, size, dur)
+    copy = SongCopy(path, fname, folder, ext.lstrip("."), br, size, dur, source)
     return Record(_norm(artist), _norm(title), artist, title, copy)
 
 

@@ -105,10 +105,15 @@ function showProgress(i, total, text) {
 }
 
 function renderSummary(s) {
+  const mix = { itunes: 0, mine: 0, mixed: 0 };
+  for (const g of GROUPS) mix[g.source_mix] = (mix[g.source_mix] || 0) + 1;
   $("#summary").replaceChildren(
     h("span", { class: "pill guess", text: `${s.groups} duplicated songs` }),
     h("span", { class: "pill skip", text: `${s.copies} copies total` }),
     h("span", { class: "pill date", text: `${human(s.reclaimable_bytes)} reclaimable` }),
+    h("span", { class: "grouptag mixed", text: `${mix.mixed} iTunes + Yours` }),
+    h("span", { class: "grouptag itunes", text: `${mix.itunes} all iTunes` }),
+    h("span", { class: "grouptag mine", text: `${mix.mine} all Yours` }),
   );
 }
 
@@ -135,6 +140,21 @@ function renderGroups() {
   updateApproved();
 }
 
+// per-copy badge: where this file came from
+function sourceBadge(source) {
+  const itunes = source === "itunes";
+  return h("span", { class: `srcbadge ${itunes ? "itunes" : "mine"}`,
+    title: itunes ? "iTunes-managed (Sound Check / gapless / purchased / iTunes-encoded)"
+                  : "Your own file (no iTunes markers — merged-in download)",
+    text: itunes ? "iTunes" : "Yours" });
+}
+
+// group-level tag: are the copies all iTunes, all yours, or a mix?
+function sourceTag(mix) {
+  const label = mix === "itunes" ? "all iTunes" : mix === "mine" ? "all Yours" : "iTunes + Yours";
+  return h("span", { class: `grouptag ${mix}`, text: label });
+}
+
 function buildGroup(g) {
   const box = h("div", { class: "dupgroup" });
   const head = h("label", { class: "dupapprove" }, [
@@ -145,6 +165,7 @@ function buildGroup(g) {
       return cb;
     })(),
     h("span", { class: "se", text: `${g.artist} — ${g.title}` }),
+    sourceTag(g.source_mix),
     h("span", { class: "muted", text: ` ${g.length} · approve removal of the non-kept copies` }),
   ]);
   box.appendChild(head);
@@ -157,6 +178,7 @@ function buildGroup(g) {
     const path = (c.folder ? c.folder + "\\" : "") + c.filename;
     const row = h("label", { class: "copyrow" }, [
       radio,
+      sourceBadge(c.source),
       h("span", { class: "fmt", text: c.fmt }),
       h("span", { class: "res", text: c.bitrate ? `${c.bitrate}k` : "?" }),
       h("span", { class: "size", text: human(c.size) }),
