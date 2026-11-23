@@ -51,7 +51,13 @@ def dedupe_page():
 
 @app.get("/music")
 def music_page():
-    return render_template("music.html", quarantine=quarantine.quarantine_stats())
+    # MUSIC_DIR (optional, from .env) pre-fills the folder box so a personal
+    # library path never has to live in the template.
+    return render_template(
+        "music.html",
+        quarantine=quarantine.quarantine_stats(),
+        music_dir=os.environ.get("MUSIC_DIR", ""),
+    )
 
 
 @app.post("/api/music/scan")

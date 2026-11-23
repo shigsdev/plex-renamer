@@ -84,6 +84,9 @@ to `.env`** and fill in one of:
 
 `.env` is gitignored, so your key stays local. **Restart the app** after editing it.
 
+`.env` can also set `MUSIC_DIR=C:\path\to\your\Music` to pre-fill the folder box
+on the Music Duplicates page.
+
 Once a key is set, lookups run **automatically after every scan** (no button to
 click) and resolve two kinds of file to a real `S##E##`:
 
