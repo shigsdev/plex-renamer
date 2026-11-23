@@ -192,6 +192,18 @@ def test_music_page_renders(client):
     assert "window.QUARANTINE" in html
 
 
+def test_music_page_folder_is_blank_without_music_dir(client, monkeypatch):
+    monkeypatch.delenv("MUSIC_DIR", raising=False)
+    html = client.get("/music").get_data(as_text=True)
+    assert 'id="dir" value=""' in html
+
+
+def test_music_page_prefills_folder_from_music_dir(client, monkeypatch):
+    monkeypatch.setenv("MUSIC_DIR", r"D:\My Music")
+    html = client.get("/music").get_data(as_text=True)
+    assert r'id="dir" value="D:\My Music"' in html
+
+
 def test_music_scan_streams_progress_then_groups(client, tmp_path, monkeypatch):
     import music
     d = tmp_path / "Music" / "Artist" / "Album"

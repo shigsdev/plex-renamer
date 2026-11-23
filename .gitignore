@@ -17,4 +17,5 @@ htmlcov/
 
 # local dev artifacts
 server.log
+boot.log
 .playwright-mcp/
