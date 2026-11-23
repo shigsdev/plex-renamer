@@ -11,7 +11,16 @@ only renames when you say so. Every applied batch is **reversible**.
 
 ## Quick start
 
+**Windows:** double-click `start.bat`. The first launch creates a virtual
+environment in `.venv` and installs the dependencies into it; later launches
+reuse it and open http://127.0.0.1:5055 in your browser.
+
+**Manually** (any OS):
+
 ```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows (PowerShell: .venv\Scripts\Activate.ps1)
+source .venv/bin/activate       # macOS/Linux
 pip install -r requirements.txt
 python app.py
 # open http://127.0.0.1:5055
@@ -129,6 +138,8 @@ tests/        pytest (parser danger-zones + apply/undo)
 ```
 
 ## Development & testing
+
+With the `.venv` activated (see Quick start):
 
 ```bash
 pip install -r requirements-dev.txt   # Flask + pytest + pytest-cov + ruff
